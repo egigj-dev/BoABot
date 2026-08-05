@@ -1,0 +1,8 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: boabot-postgres
+    environment: { POSTGRES_PASSWORD: boa, POSTGRES_DB: boa, POSTGRES_USER: boa }
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: ["./pgdata:/var/lib/postgresql/data"]
+    restart: unless-stopped

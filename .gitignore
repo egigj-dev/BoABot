@@ -1,0 +1,17 @@
+db/pgdata/
+embedded.parquet
+*.jsonl
+
+
+ HANDOFF.md
+HANDOFF_updated.md
+PROJECT_SUMMARY.md
+__pycache__/
+api.py.orig
+boa_embed.ipynb
+boa_scraper_v2 (2).ipynb
+callcenter.py.orig
+embedded_old.parquet
+trust.py.orig
+
+.env
