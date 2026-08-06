@@ -8,6 +8,9 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum
 
+import numpy as np
+
+from retrieve import model
 from trust import (BUSINESS_DEPOSIT_MESSAGE, UNSAFE_INPUT_MESSAGE, input_gate,
                    is_business_deposit_question)
 
@@ -39,6 +42,8 @@ class Decision:
     question: str = ""
     handoff: bool = False
     pii_redacted: bool = False
+    query_embedding: np.ndarray | None = None  # Normalized caller vector for downstream retrieval reuse.
+    handoff_score: float | None = None  # Best semantic handoff-exemplar cosine score.
 
 @dataclass
 class Session:
@@ -89,10 +94,40 @@ class SessionStore:
 
 sessions = SessionStore()
 
-_SECRET_RE = re.compile(r"\b(?:pin|cvv|cvc|fjal[eë]kalim|kod verifikimi|one[- ]?time password)\b", re.I)
-_ACCOUNT_ACTION_RE = re.compile(
-    r"\b(?:llogaria ime|karta ime|kart[eë]n time|e humbur|e vjedhur|"
-    r"mashtrim|blloko\w*|ngrij(?:eni)?|transfert[eë]n time)\b", re.I)
+# Fast-path only credential disclosures or active access incidents; general PIN/CVV questions use semantic routing.
+_SECRET_FAST_RE = re.compile(
+    r"(?:\b(?:pin|cvv|cvc|otp)\b.{0,80}\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|tregova|"
+    r"kerk|doli|nuk funksion)|\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|tregova|kerk|doli|"
+    r"nuk funksion).{0,80}\b(?:pin|cvv|cvc|otp)\b)", re.I)
+
+# Diverse caller-speech anchors chosen from handoff_phrases.jsonl, eight per protected intent.
+_HANDOFF_EXEMPLARS = (
+    ("lost_card", "Kam humbur kartën"), ("lost_card", "Karta ime është e humbur"),
+    ("lost_card", "Nuk po e gjej kartën time"), ("lost_card", "Kartën e lashë në taksi"),
+    ("lost_card", "Karta ime... nuk e gjej"), ("lost_card", "Më ka ikur karta nga portofoli"),
+    ("lost_card", "Ku raportohen kartat e humbura?"), ("lost_card", "Karta u humb në udhëtim"),
+    ("stolen_card", "Ma kanë vjedhur kartën"), ("stolen_card", "Karta ime është vjedhur"),
+    ("stolen_card", "Dikush ma ka marrë kartën"), ("stolen_card", "Kartën ma morën nga çanta"),
+    ("stolen_card", "Më pickuan kartën në autobus"), ("stolen_card", "Më hynë në shtëpi dhe morën kartën"),
+    ("stolen_card", "Karta ime... ma kanë vjedhur"), ("stolen_card", "Kartën ma kanë rrëmbyer"),
+    ("fraud_unauthorized", "Nuk e njoh këtë transaksion"), ("fraud_unauthorized", "Dikush ka perdorur karten time"),
+    ("fraud_unauthorized", "Më janë marrë para nga llogaria"), ("fraud_unauthorized", "Kam një pagesë që s'e kam bërë unë"),
+    ("fraud_unauthorized", "Shoh një transferim që nuk e autorizova"), ("fraud_unauthorized", "Karta ime... ka blerje që s'i njoh"),
+    ("fraud_unauthorized", "Është tërhequr cash pa dijeninë time"), ("fraud_unauthorized", "Po më ikin lekët nga banka"),
+    ("block_freeze", "Dua ta bllokoj kartën"), ("block_freeze", "Më duhet të ngrij kartën"),
+    ("block_freeze", "Dua të pezulloj llogarinë"), ("block_freeze", "Ndalo pagesat nga karta ime"),
+    ("block_freeze", "Karta ime... bllokojeni"), ("block_freeze", "Ta stopoj kartën"),
+    ("block_freeze", "Çaktivizojeni kartelën"), ("block_freeze", "Dua të ndaloj transfertat nga llogaria"),
+    ("secret_credential", "Kodi PIN më është zbuluar"), ("secret_credential", "Dikush e di PIN-in tim"),
+    ("secret_credential", "Kam ndarë fjalëkalimin pa dashje"), ("secret_credential", "Më kërkuan kodin OTP dhe ua dhashë"),
+    ("secret_credential", "CVV-ja ime është komprometuar"), ("secret_credential", "Kam klikuar link dhe futa fjalëkalimin"),
+    ("secret_credential", "Kodi SMS i bankës i shkoi dikujt tjetër"), ("secret_credential", "Fjalëkalimin e kam treguar"),
+)
+_HANDOFF_THRESHOLD = 0.82  # Tuned cosine cutoff; change only with phrase-bank evaluation.
+_HANDOFF_TEXTS = tuple(text for _, text in _HANDOFF_EXEMPLARS)  # Text-only view passed to bge-m3.
+_HANDOFF_EMBEDDINGS = np.asarray(  # Cached normalized exemplar vectors, encoded once at module import.
+    model().encode(_HANDOFF_TEXTS, normalize_embeddings=True)
+)
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
 _PHONE_RE = re.compile(r"(?<!\d)(?:\+?355\s*)?(?:6[789]|0)\d(?:[\s-]?\d){6,8}(?!\d)")
 _LONG_NUMBER_RE = re.compile(r"(?<!\d)(?:\d[ -]?){8,18}\d(?!\d)")
@@ -110,6 +145,13 @@ def _is_repeat(text: str) -> bool:
         "nuk dëgjova", "nuk degjova", "thuaje prap", "repeat",
     ))
 
+def _handoff_embedding(question: str) -> tuple[np.ndarray, float]:
+    """Encode a caller turn once and return its strongest handoff-anchor cosine."""
+    query_embedding = np.asarray(model().encode([question], normalize_embeddings=True)[0])
+    best_score = float(np.max(_HANDOFF_EMBEDDINGS @ query_embedding))
+    return query_embedding, best_score
+
+
 def decide(question: str, last_answer: str, history: list[dict[str, str]]) -> Decision:
     """Route a caller turn before it can reach retrieval or the model."""
     gate = input_gate(question)
@@ -119,7 +161,7 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]]) -> De
     if _is_repeat(question):
         return Decision(Outcome.REPEAT, last_answer or REPEAT_MESSAGE)
 
-    if _SECRET_RE.search(question) or _ACCOUNT_ACTION_RE.search(question):
+    if _SECRET_FAST_RE.search(question):
         return Decision(Outcome.HANDOFF, HANDOFF_MESSAGE, handoff=True)
 
     if is_business_deposit_question(question, history):
@@ -132,5 +174,10 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]]) -> De
     if len(clean_question.split()) < 3:
         return Decision(Outcome.CLARIFY, CLARIFY_MESSAGE)
 
-    return Decision(None, question=clean_question)
+    query_embedding, handoff_score = _handoff_embedding(clean_question)
+    if handoff_score >= _HANDOFF_THRESHOLD:
+        return Decision(Outcome.HANDOFF, HANDOFF_MESSAGE, handoff=True,
+                        query_embedding=query_embedding, handoff_score=handoff_score)
+    return Decision(None, question=clean_question, query_embedding=query_embedding,
+                    handoff_score=handoff_score)
 

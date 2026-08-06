@@ -1,5 +1,4 @@
 # api.py — FastAPI wrapper with SSE.
-# /chat : POST {question, history} -> text/event-stream
 # events: tool, token, error, done
 import json
 import logging
@@ -13,45 +12,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from rag import (API, KEY, MODEL, SYSTEM, TOOLS, RAGError, _post,
                  completion_message, retrieve_evidence, rewrite, tool_query)
-from trust import (BUSINESS_DEPOSIT_MESSAGE, NO_EVIDENCE_MESSAGE, input_gate,
-                   is_business_deposit_question)
 from callcenter import HANDOFF_MESSAGE, Outcome, decide, sessions
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 logger = logging.getLogger(__name__)
-
-MAX_HISTORY_MESSAGES = 12
-MAX_MESSAGE_CHARS = 4_000
-
-
-class Req(BaseModel):
-    """The only client-supplied conversation fields the model may receive."""
-
-    question: str = Field(min_length=2, max_length=1_500)
-    history: list[dict[str, str]] = Field(default_factory=list, max_length=MAX_HISTORY_MESSAGES)
-
-    @field_validator("question")
-    @classmethod
-    def clean_question(cls, value: str) -> str:
-        value = value.strip()
-        if len(value) < 2:
-            raise ValueError("Question must contain at least two characters")
-        return value
-
-    @field_validator("history")
-    @classmethod
-    def validate_history(cls, history: list[dict[str, str]]) -> list[dict[str, str]]:
-        clean_history = []
-        for message in history:
-            if set(message) != {"role", "content"} or message["role"] not in {"user", "assistant"}:
-                raise ValueError("History messages must contain user/assistant role and content only")
-            content = message["content"].strip()
-            if not content or len(content) > MAX_MESSAGE_CHARS:
-                raise ValueError("History message has invalid content length")
-            clean_history.append({"role": message["role"], "content": content})
-        return clean_history
-
 
 def sse(obj):
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
@@ -86,67 +51,6 @@ def source(hit: dict[str, Any]) -> dict[str, str]:
     """Return citation metadata without sending retrieved passages to the browser."""
     return {key: str(hit.get(key) or "") for key in ("id", "doc", "article", "url")}
 
-
-def generate(req: Req):
-    preflight = input_gate(req.question)
-    if not preflight.allowed:
-        yield sse({"type": "token", "text": preflight.message})
-        yield sse({"type": "done", "sources": []})
-        return
-    if is_business_deposit_question(req.question, req.history):
-        yield sse({"type": "token", "text": BUSINESS_DEPOSIT_MESSAGE})
-        yield sse({"type": "done", "sources": []})
-        return
-    messages = [{"role": "system", "content": SYSTEM}] + req.history \
-               + [{"role": "user", "content": req.question}]
-    sources: dict[str, dict[str, str]] = {}
-
-    try:
-        for _ in range(3):
-            message = completion_message(_post({"model": MODEL, "messages": messages,
-                                                "tools": TOOLS}))
-            messages.append(message)
-
-            if not message.get("tool_calls"):
-                if not sources:
-                    yield sse({"type": "token", "text": NO_EVIDENCE_MESSAGE})
-                    yield sse({"type": "done", "sources": []})
-                    return
-                yield sse({"type": "token", "text": message.get("content", "")})
-                yield sse({"type": "done", "sources": list(sources.values())})
-                return
-
-            for tool_call in message["tool_calls"]:
-                query = tool_query(tool_call)
-                standalone_query = rewrite(query, req.history)
-                yield sse({"type": "tool", "query": standalone_query})
-                hits, refusal = retrieve_evidence(standalone_query, req.history)
-                if refusal:
-                    yield sse({"type": "token", "text": refusal})
-                    yield sse({"type": "done", "sources": []})
-                    return
-                for hit in hits:
-                    item = source(hit)
-                    sources[item["id"]] = item
-                messages.append({"role": "tool", "tool_call_id": tool_call["id"],
-                                 "content": json.dumps(hits, ensure_ascii=False, default=str)})
-
-            for token in stream_answer(messages):
-                yield sse({"type": "token", "text": token})
-            yield sse({"type": "done", "sources": list(sources.values())})
-            return
-    except RAGError:
-        logger.exception("Recoverable RAG error while serving /chat")
-        yield sse({"type": "error", "code": "upstream_error",
-                   "message": "Shërbimi i përgjigjeve nuk është i disponueshëm për momentin. Provoni përsëri."})
-    except Exception:
-        logger.exception("Unexpected error while serving /chat")
-        yield sse({"type": "error", "code": "internal_error",
-                   "message": "Ndodhi një gabim gjatë kërkimit. Provoni përsëri."})
-    yield sse({"type": "done", "sources": list(sources.values())})
-@app.post("/chat")
-def chat(req: Req):
-    return StreamingResponse(generate(req), media_type="text/event-stream")
 
 @app.get("/health")
 def health():
