@@ -1,11 +1,13 @@
 """Call-center conversation policy and in-memory session state."""
 from __future__ import annotations
 
+import base64
 import json
 import re
 import threading
 import time
 import uuid
+import zlib
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -45,7 +47,7 @@ class Decision:
     handoff: bool = False
     pii_redacted: bool = False
     query_embedding: np.ndarray | None = None  # Normalized caller vector for downstream retrieval reuse.
-    handoff_score: float | None = None  # Frozen linear-probe decision score.
+    handoff_score: float | None = None  # Frozen positive-vs-negative neighbour margin.
 
 @dataclass
 class Session:
@@ -102,14 +104,15 @@ _SECRET_FAST_RE = re.compile(
     r"kerk|doli|nuk funksion)|\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|tregova|kerk|doli|"
     r"nuk funksion).{0,80}\b(?:pin|cvv|cvc|otp)\b)", re.I)
 
-# Frozen train-split linear probe; serving needs NumPy only, not sklearn.
+# Frozen grouped-train nearest-neighbour classifier; serving needs NumPy only.
 _PROBE_PATH = Path(__file__).with_name("handoff_probe.json")
-_PROBE_DATA = json.loads(_PROBE_PATH.read_text(encoding="utf-8"))  # Exported probe metadata and coefficients.
-_PROBE_WEIGHTS = np.asarray(_PROBE_DATA["weights"], dtype=np.float32)  # Frozen 1024-dim decision vector.
-_PROBE_INTERCEPT = float(_PROBE_DATA["intercept"])  # Exported logistic-regression intercept.
-_HANDOFF_THRESHOLD = float(_PROBE_DATA["threshold"])  # Train-tuned FP<=2% operating threshold.
-if _PROBE_WEIGHTS.shape != (_PROBE_DATA["dimensions"],):
-    raise RuntimeError("handoff_probe.json has an invalid weight vector")
+_PROBE_DATA = json.loads(_PROBE_PATH.read_text(encoding="utf-8"))  # Exported classifier metadata and exemplars.
+_PROBE_BYTES = zlib.decompress(base64.b64decode(_PROBE_DATA["vectors_zlib_b64"]))  # Compressed frozen vectors.
+_PROBE_VECTORS = np.frombuffer(_PROBE_BYTES, dtype="<f4").reshape(_PROBE_DATA["shape"])  # Train embeddings.
+_PROBE_LABELS = np.asarray(_PROBE_DATA["labels"], dtype=bool)  # Positive/negative class for each exemplar.
+_HANDOFF_THRESHOLD = float(_PROBE_DATA["margin"])  # Train-tuned FP<=2% class-margin threshold.
+if _PROBE_DATA["k"] != 1 or _PROBE_VECTORS.shape[1] != _PROBE_DATA["dimensions"]:
+    raise RuntimeError("handoff_probe.json has invalid nearest-neighbour data")
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
 _PHONE_RE = re.compile(r"(?<!\d)(?:\+?355\s*)?(?:6[789]|0)\d(?:[\s-]?\d){6,8}(?!\d)")
 _LONG_NUMBER_RE = re.compile(r"(?<!\d)(?:\d[ -]?){8,18}\d(?!\d)")
@@ -133,8 +136,13 @@ def _encode_question(question: str) -> np.ndarray:
 
 
 def _probe_score(query_embedding: np.ndarray) -> float:
-    """Classify one frozen embedding with a single serve-time dot product."""
-    return float(_PROBE_WEIGHTS @ query_embedding + _PROBE_INTERCEPT)
+    """Return positive-minus-negative cosine margin, or negative infinity on a negative nearest neighbour."""
+    similarities = _PROBE_VECTORS @ query_embedding
+    if not _PROBE_LABELS[int(np.argmax(similarities))]:
+        return float("-inf")
+    positive_similarity = float(np.max(similarities[_PROBE_LABELS]))
+    negative_similarity = float(np.max(similarities[~_PROBE_LABELS]))
+    return positive_similarity - negative_similarity
 
 
 def decide(question: str, last_answer: str, history: list[dict[str, str]]) -> Decision:
