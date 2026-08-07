@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import statistics
 import time
 
@@ -49,9 +50,11 @@ def request_turn(url: str, question: str, session_id: str | None = None) -> dict
     marks: dict[str, float | str | None] = {
         "first_event_ms": None,
         "first_token_ms": None,
+        "first_sentence_ms": None,
         "done_ms": None,
         "session_id": session_id,
     }
+    answer = ""
     with requests.post(
         f"{url.rstrip('/')}/turn",
         json={"question": question, "session_id": session_id},
@@ -70,6 +73,12 @@ def request_turn(url: str, question: str, session_id: str | None = None) -> dict
                 marks["first_event_ms"] = elapsed_ms
             if event.get("type") == "token" and marks["first_token_ms"] is None:
                 marks["first_token_ms"] = elapsed_ms
+            if event.get("type") == "token":
+                answer += str(event.get("text") or "")
+                if marks["first_sentence_ms"] is None and re.search(
+                    r"[.!?][\"'»”\)\]]?(?:\s|$)", answer
+                ):
+                    marks["first_sentence_ms"] = elapsed_ms
             if event.get("type") == "done":
                 marks["done_ms"] = elapsed_ms
                 marks["session_id"] = event.get("session_id") or session_id
@@ -100,19 +109,24 @@ def main() -> None:
             session_id = str(priming["session_id"])
         result = request_turn(args.url, QUESTIONS[slot], session_id)
         results.append(result)
+        first_sentence = result["first_sentence_ms"]
+        sentence_text = f"{first_sentence:7.0f} ms" if isinstance(first_sentence, float) else "    n/a   "
         print(
             f"{index + 1:2d} first_event={result['first_event_ms']:7.0f} ms  "
             f"first_token={result['first_token_ms']:7.0f} ms  "
+            f"first_sentence={sentence_text}  "
             f"done={result['done_ms']:7.0f} ms"
         )
 
     print("summary (ms)")
     for label, key in (("first SSE event", "first_event_ms"),
-                       ("first token", "first_token_ms"), ("done", "done_ms")):
-        values = [float(result[key]) for result in results]
+                       ("first token", "first_token_ms"),
+                       ("first sentence", "first_sentence_ms"),
+                       ("done", "done_ms")):
+        values = [float(result[key]) for result in results if result[key] is not None]
         print(
             f"  {label:<16} p50 {statistics.median(values):7.0f}  "
-            f"p95 {percentile(values, 0.95):7.0f}"
+            f"p95 {percentile(values, 0.95):7.0f}  n {len(values)}/{len(results)}"
         )
 
 
