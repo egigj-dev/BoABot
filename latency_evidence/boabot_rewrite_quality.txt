@@ -1,0 +1,78 @@
+NON-ELLIPTICAL (8 labeled turns)
+01 flag=False changed=True gold=rate_0108 direct_hit=True rewritten_hit=True
+   q= Sa është komision vjetor i mirembajtjes se kartes për karte debiti në Banka Kombëtare Tregtare?
+   rewrite= Sa është komisioni vjetor i mirëmbajtjes së kartës për kartë debiti në Banka Kombëtare Tregtare?
+   direct= ['rate_0108', 'rate_0092', 'rate_0110', 'rate_0117', 'rate_0115']
+   rewritten= ['rate_0108', 'rate_0092', 'rate_0115', 'rate_0117', 'rate_0110']
+02 flag=False changed=True gold=rate_0049 direct_hit=True rewritten_hit=True
+   q= Sa është komision për ndryshimin e produktit % për kredi per shtepi në Banka Credins?
+   rewrite= Sa është komisioni për ndryshimin e produktit të kredisë për shtëpi në Bankën Credins si përqindje?
+   direct= ['rate_0049', 'rate_0052', 'rate_0054', 'rate_0048', 'rate_0077']
+   rewritten= ['rate_0049', 'rate_0052', 'rate_0054', 'rate_0077', 'rate_0074']
+03 flag=False changed=True gold=rate_0097 direct_hit=True rewritten_hit=True
+   q= Sa është terheqje cash nga terminalet e bankave te tjera min për karte krediti në Banka Kombëtare Tregtare?
+   rewrite= Sa është shuma minimale për tërheqje cash nga terminalet e bankave të tjera për kartën e kreditit në Bankën Kombëtare Tregtare?
+   direct= ['rate_0099', 'rate_0102', 'rate_0101', 'rate_0098', 'rate_0097']
+   rewritten= ['rate_0102', 'rate_0100', 'rate_0099', 'rate_0097', 'rate_0101']
+04 flag=False changed=True gold=rate_0113 direct_hit=True rewritten_hit=True
+   q= Sa është terheqje cash nga terminalet e bankave te tjera % për karte debiti në Banka Union?
+   rewrite= Sa është tarifa e tërheqjes së cash-it nga terminalet e bankave të tjera, në përqindje, për kartën e debitit në Banka Union?
+   direct= ['rate_0113', 'rate_0115', 'rate_0112', 'rate_0099', 'rate_0102']
+   rewritten= ['rate_0113', 'rate_0115', 'rate_0099', 'rate_0112', 'rate_0098']
+05 flag=False changed=True gold=rate_0053 direct_hit=True rewritten_hit=True
+   q= Sa është komision për ndryshimin e kontratës së kredisë max për kredi per shtepi në Banka Tirana?
+   rewrite= Sa është komisioni për ndryshimin e kontratës së kredisë, maksimalisht për një kredi për shtëpi në Banka Tirana?
+   direct= ['rate_0051', 'rate_0053', 'rate_0076', 'rate_0055', 'rate_0052']
+   rewritten= ['rate_0051', 'rate_0076', 'rate_0053', 'rate_0055', 'rate_0052']
+06 flag=False changed=True gold=rate_0005 direct_hit=False rewritten_hit=False
+   q= Sa është depozita me afat 3 mujore për depozita për individë në Banka Credins?
+   rewrite= Për të njëjtën bankë dhe produkt, sa është depozita me afat 3 mujore për depozita për individë në Banka Credins?
+   direct= ['rate_0007', 'rate_0006', 'reg_03990', 'rate_0019', 'rate_0020']
+   rewritten= ['rate_0007', 'rate_0006', 'rate_0019', 'rate_0020', 'rate_0016']
+07 flag=False changed=True gold=rate_0033 direct_hit=True rewritten_hit=False
+   q= Sa është norma për biznes i vogel me maturitet 25-36 muaj në Banka Tirana?
+   rewrite= Duke iu referuar bisedës sonë për Bankën e Tiranës dhe produktin e biznesit të vogël, cila është norma e interesit për një kredi me maturitet 25-36 muaj?
+   direct= ['rate_0033', 'rate_0029', 'rate_0037', 'rate_0028', 'rate_0036']
+   rewritten= ['reg_00061', 'reg_00533', 'rate_0023', 'rate_0037', 'reg_00480']
+08 flag=False changed=True gold=rate_0065 direct_hit=False rewritten_hit=False
+   q= Sa është komisioni i disbursimit % për kredi konsumatore me hipoteke në Banka Credins?
+   rewrite= Komisioni i disbursimit për kredi konsumatore me hipoteke në Banka Credins ndryshon në varësi të kushteve specifike të produktit dhe politikave aktuale të bankës. Për të marrë informacionin e saktë dhe të përditësuar, ju rekomandoj të kontaktoni drejtpërdrejt Banka Credins ose të konsultoni faqen e tyre zyrtare të internetit dhe dokumentacionin e produktit. Nëse keni nevojë për ndihmë për të kërkuar këtë informacion, mund t'ju udhëzoj se si ta bëni.
+   direct= ['rate_0077', 'rate_0068', 'rate_0079', 'rate_0066', 'rate_0081']
+   rewritten= ['rate_0073', 'rate_0077', 'rate_0068', 'rate_0062', 'rate_0079']
+non-elliptical list differences=8/8; exact gold recall direct=6/8 rewritten=5/8
+ELLIPTICAL (7 turns)
+01 flag=True changed=True
+   q= Po për 24 muaj?
+   rewrite= Cila është norma e depozitës për afat 24-mujor në Banka Credins, krahasuar me normën 12-mujore që përmendëm më parë?
+   direct= ['reg_03684', 'reg_03654', 'reg_03663', 'reg_02103', 'reg_02174']
+   rewritten= ['rate_0016', 'rate_0015', 'rate_0019', 'rate_0020', 'rate_0018']
+02 flag=True changed=True
+   q= Dhe në Banka Tirana?
+   rewrite= Sa është norma e interesit për depozitën 3-mujore në Banka Tirana?
+   direct= ['reg_02137', 'reg_00256', 'reg_02748', 'reg_01755', 'reg_00257']
+   rewritten= ['rate_0007', 'rate_0006', 'rate_0019', 'rate_0009', 'rate_0015']
+03 flag=True changed=True
+   q= Sa është ajo?
+   rewrite= Komisioni i kartës së kreditit në BKT (Banka Kombëtare Tregtare) zakonisht përfshin tarifa vjetore, interesa për pagesa me këste, dhe komisione për tërheqje cash. Megjithatë, për shifrat e sakta dhe të azhornuara, ju rekomandoj të kontaktoni direkt BKT-në ose të shikoni faqen e tyre zyrtare, pasi tarifat mund të ndryshojnë në varësi të llojit të kartës dhe kushteve aktuale.
+   direct= ['reg_02178', 'reg_02179', 'reg_02177', 'reg_03074', 'reg_00025']
+   rewritten= ['rate_0096', 'rate_0098', 'rate_0101', 'rate_0099', 'rate_0097']
+04 flag=True changed=True
+   q= Çfarë kërkohet aty?
+   rewrite= Çfarë kërkohet për licencimin e një banke në Shqipëri?
+   direct= ['reg_03707', 'reg_03708', 'reg_02807', 'reg_00256', 'reg_02968']
+   rewritten= ['reg_00196', 'reg_00193', 'reg_00213', 'reg_00257', 'reg_00205']
+05 flag=True changed=True
+   q= Po kjo bankë?
+   rewrite= A ofron Banka Credins kredi konsumatore me hipotekë?
+   direct= ['reg_02308', 'reg_00256', 'reg_00442', 'reg_01751', 'reg_00257']
+   rewritten= ['rate_0073', 'rate_0077', 'rate_0068', 'rate_0079', 'rate_0081']
+06 flag=True changed=True
+   q= A zbatohet edhe këtu?
+   rewrite= A zbatohet rregullorja për transparencën bankare edhe në këtë kontekst?
+   direct= ['reg_03499', 'reg_03500', 'reg_02056', 'reg_02333', 'reg_03522']
+   rewritten= ['reg_02145', 'reg_02139', 'reg_03472', 'reg_02140', 'reg_02138']
+07 flag=True changed=True
+   q= Ndërsa për kartën?
+   rewrite= Sa kushton mirëmbajtja e kartës në BKT?
+   direct= ['reg_00390', 'reg_03163', 'reg_02531', 'reg_00389', 'reg_02180']
+   rewritten= ['rate_0108', 'rate_0092', 'rate_0093', 'reg_01155', 'reg_02180']

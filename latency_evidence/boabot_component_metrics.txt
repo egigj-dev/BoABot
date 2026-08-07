@@ -1,0 +1,12 @@
+probe shape: (233, 1024)
+embedding encode: n=100 p50=129.776ms p95=151.265ms mean=128.855ms
+Method B matrix only: n=100 p50=0.090ms p95=0.142ms mean=0.098ms
+Method B full semantic route: n=100 p50=128.751ms p95=155.678ms mean=129.766ms
+pgvector + new connection: n=100 p50=39.367ms p95=45.035ms mean=40.422ms
+pgvector + pooled connection: n=100 p50=27.566ms p95=31.787ms mean=28.480ms
+context k=5 chars per turn: [1945, 894, 902, 1875, 997, 5223, 10452, 6576, 9813, 7945]
+context k=5 tokens per turn: [545, 244, 246, 538, 263, 1273, 2683, 1776, 2543, 2062]
+context k=5 chars p50=3584 p95=10452 mean=4662.2
+context k=5 tokens p50=909 p95=2683 mean=1217.3
+context k=3 chars p50=2248 p95=6271 mean=2844.8
+context k=3 tokens p50=579 p95=1619 mean=748.1

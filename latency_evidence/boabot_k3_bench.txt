@@ -1,0 +1,15 @@
+/turn benchmark: N=10, mode=empty history, url=http://127.0.0.1:8100
+ 1 first_event=    169 ms  first_token=   2019 ms  done=  13276 ms
+ 2 first_event=    173 ms  first_token=   4085 ms  done=   4663 ms
+ 3 first_event=    158 ms  first_token=  22050 ms  done=  25068 ms
+ 4 first_event=    199 ms  first_token=   7262 ms  done=   9620 ms
+ 5 first_event=    208 ms  first_token=   7378 ms  done=   9512 ms
+ 6 first_event=    165 ms  first_token=   5141 ms  done=   6015 ms
+ 7 first_event=    174 ms  first_token=   8486 ms  done=  17684 ms
+ 8 first_event=    216 ms  first_token=  10035 ms  done=  16565 ms
+ 9 first_event=    164 ms  first_token=   6828 ms  done=   8001 ms
+10 first_event=    218 ms  first_token=   1522 ms  done=  17432 ms
+summary (ms)
+  first SSE event  p50     173  p95     218
+  first token      p50    7045  p95   22050
+  done             p50   11448  p95   25068

@@ -10,13 +10,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from rag import (API, KEY, MODEL, SYSTEM, TOOLS, RAGError, _post,
-                 completion_message, retrieve_evidence, rewrite, tool_query)
+from rag import (API, KEY, MODEL, RAGError, grounded_messages, needs_rewrite,
+                 retrieve_evidence, rewrite)
 from callcenter import HANDOFF_MESSAGE, Outcome, decide, sessions
+from retrieve import embedding_stats
+from retrieve import shutdown as shutdown_retrieval
+from retrieve import warmup as warmup_retrieval
+from trust import NO_EVIDENCE_MESSAGE
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+def warm_dependencies():
+    warmup_retrieval()
+
+
+@app.on_event("shutdown")
+def close_dependencies():
+    logger.warning("query embedding reuse totals: %s", embedding_stats())
+    shutdown_retrieval()
+
 
 def sse(obj):
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
@@ -273,37 +289,31 @@ def generate_turn(req: TurnReq):
                         pii_redacted=decision.pii_redacted)
         return
 
-    messages = [{"role": "system", "content": SYSTEM}] + session.history + [
-        {"role": "user", "content": decision.question},
-    ]
     sources: dict[str, dict[str, str]] = {}
 
     try:
-        message = completion_message(_post({
-            "model": MODEL, "messages": messages, "tools": TOOLS,
-        }))
-        messages.append(message)
-        if not message.get("tool_calls"):
-            sessions.record(session, decision.question, NO_EVIDENCE_MESSAGE)
-            yield sse({"type": "token", "text": NO_EVIDENCE_MESSAGE})
+        standalone_query = rewrite(decision.question, session.history) \
+                           if needs_rewrite(decision.question, session.history) else decision.question
+        yield sse({"type": "tool", "query": standalone_query})
+        byte_identical = standalone_query.encode("utf-8") == decision.question.encode("utf-8")
+        if byte_identical:
+            assert decision.query_embedding is not None
+        query_embedding = decision.query_embedding if byte_identical else None
+        hits, refusal = retrieve_evidence(
+            standalone_query,
+            session.history,
+            query_embedding=query_embedding,
+            embedded_query=decision.question if query_embedding is not None else None,
+        )
+        if refusal:
+            sessions.record(session, decision.question, refusal)
+            yield sse({"type": "token", "text": refusal})
             yield turn_done(Outcome.UNSUPPORTED, session.session_id)
             return
-
-        for tool_call in message["tool_calls"]:
-            query = tool_query(tool_call)
-            standalone_query = rewrite(query, session.history)
-            yield sse({"type": "tool", "query": standalone_query})
-            hits, refusal = retrieve_evidence(standalone_query, session.history)
-            if refusal:
-                sessions.record(session, decision.question, refusal)
-                yield sse({"type": "token", "text": refusal})
-                yield turn_done(Outcome.UNSUPPORTED, session.session_id)
-                return
-            for hit in hits:
-                item = source(hit)
-                sources[item["id"]] = item
-            messages.append({"role": "tool", "tool_call_id": tool_call["id"],
-                             "content": json.dumps(hits, ensure_ascii=False, default=str)})
+        for hit in hits:
+            item = source(hit)
+            sources[item["id"]] = item
+        messages = grounded_messages(decision.question, session.history, hits)
 
         answer_parts = []
         for token in stream_answer(messages):
@@ -313,6 +323,7 @@ def generate_turn(req: TurnReq):
         if not answer:
             answer = NO_EVIDENCE_MESSAGE
             outcome = Outcome.UNSUPPORTED
+            yield sse({"type": "token", "text": answer})
         else:
             outcome = Outcome.ANSWER
         sessions.record(session, decision.question, answer)
@@ -332,4 +343,3 @@ def generate_turn(req: TurnReq):
 @app.post("/turn")
 def turn(req: TurnReq):
     return StreamingResponse(generate_turn(req), media_type="text/event-stream")
-

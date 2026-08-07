@@ -1,0 +1,2 @@
+tool decision call removed by Step 1: n=10 p50=4471ms p95=8022ms values=[3027, 4536, 4406, 8022, 5007, 4765, 3907, 4564, 4089, 4384]
+unconditional rewrite call skipped by Step 2: n=10 p50=8338ms p95=12494ms values=[7883, 12494, 9676, 826, 5222, 12117, 3172, 12079, 4172, 8793]
