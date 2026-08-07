@@ -281,6 +281,8 @@ def main() -> None:
     parser.add_argument("--size-probe-requests", type=int, default=30,
                         help="extra varying-input calls after the fixed run; 0 disables")
     parser.add_argument("--chunks", type=Path, default=Path("chunks.jsonl"))
+    parser.add_argument("--output", type=Path,
+                        help="write raw results from the primary run as JSON")
     args = parser.parse_args()
     if args.requests < 1 or args.size_probe_requests < 0:
         parser.error("request counts must be positive (size probe may be zero)")
@@ -292,8 +294,23 @@ def main() -> None:
     input_price, output_price = model_price(session, key, args.model)
     if input_price is not None:
         print(f"catalog price: ${input_price:g}/M input, ${output_price:g}/M output")
-    run(args, key, chunks, session, args.requests, args.vary, args.k,
-        "provider TTFT benchmark (BoABot code bypassed)")
+    primary = run(args, key, chunks, session, args.requests, args.vary, args.k,
+                  "provider TTFT benchmark (BoABot code bypassed)")
+    if args.output:
+        payload = {
+            "model": args.model,
+            "requests": args.requests,
+            "vary": args.vary,
+            "k": args.k,
+            "layout": args.layout,
+            "prompt": args.prompt,
+            "reasoning": args.reasoning,
+            "session_id_enabled": bool(args.session_id),
+            "results": primary,
+        }
+        args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                               encoding="utf-8")
+        print(f"raw JSON written to {args.output}")
     if args.size_probe_requests:
         print()
         run(args, key, chunks, session, args.size_probe_requests, True, args.k,

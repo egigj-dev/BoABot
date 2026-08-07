@@ -1,0 +1,46 @@
+FULL /turn LATENCY (ms)
+| model | mode | metric | p50 | p90 | p95 | p99 | max |
+|---|---|---|---:|---:|---:|---:|---:|
+| DeepSeek | empty | first SSE | 164 | 188 | 195 | 228 | 278 |
+| DeepSeek | empty | first token | 4912 | 13995 | 16109 | 22664 | 28212 |
+| DeepSeek | empty | first sentence | 6554 | 17022 | 20369 | 25803 | 29460 |
+| DeepSeek | empty | done | 8848 | 44802 | 56454 | 94374 | 215591 |
+| DeepSeek | history | first SSE | 164 | 185 | 191 | 197 | 199 |
+| DeepSeek | history | first token | 4728 | 13370 | 18125 | 30927 | 42336 |
+| DeepSeek | history | first sentence | 6675 | 17071 | 20613 | 33439 | 43179 |
+| DeepSeek | history | done | 11727 | 41024 | 65624 | 112587 | 178715 |
+| Gemini | empty | first SSE | 162 | 187 | 195 | 208 | 236 |
+| Gemini | empty | first token | 844 | 2706 | 5986 | 10608 | 12024 |
+| Gemini | empty | first sentence | 1062 | 3066 | 6992 | 10611 | 12054 |
+| Gemini | empty | done | 1982 | 6441 | 8664 | 12945 | 23838 |
+| Gemini | history | first SSE | 163 | 181 | 188 | 208 | 223 |
+| Gemini | history | first token | 789 | 1243 | 1562 | 2949 | 4761 |
+| Gemini | history | first sentence | 1049 | 1580 | 2001 | 4925 | 5702 |
+| Gemini | history | done | 1506 | 3435 | 3726 | 5702 | 6613 |
+
+GENERATION
+| model | mode | tok/s p50 | tok/s p10 | mean first-sentence tokens | TTFT p50 | sentence-generation p50 | first-sentence p50 decomposition | fast/slow (<3s) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| deepseek | empty | 38.2 | 6.3 | 37.4 | 4912 | 855 | 5814 + 739 = 6554 | 34/66 |
+| deepseek | history | 48.6 | 4.9 | 42.4 | 4728 | 783 | 6054 + 621 = 6675 | 32/68 |
+| gemini | empty | 171.4 | 86.2 | 37.7 | 844 | 170 | 933 + 129 = 1062 | 90/10 |
+| gemini | history | 159.1 | 78.4 | 36.8 | 789 | 197 | 777 + 272 = 1049 | 99/1 |
+
+PROVIDER CACHE ISOLATION (ms)
+| condition | p50 | p90 | p95 | p99 | max | cache hits | fast/slow (<5s) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| cache on | 4197 | 8253 | 9349 | 12271 | 15443 | 95/100 | 65/35 |
+| cache off | 4512 | 11249 | 14529 | 20720 | 27331 | 41/100 | 59/41 |
+
+CACHE ON SAVINGS VS OFF (ms; positive means faster)
+  p50 315  p90 2996  p95 5180  p99 8449  max 11888
+
+VOICE BUDGET (first sentence + 300 ms assumed Azure TTS first byte)
+| model | mode | first-audio p50 | first-audio p95 | 1.5s p50/p95 | 2.5s p50/p95 |
+|---|---|---:|---:|---|---|
+| deepseek | empty | 6854 | 20669 | FAIL/FAIL | FAIL/FAIL |
+| deepseek | history | 6975 | 20913 | FAIL/FAIL | FAIL/FAIL |
+| gemini | empty | 1362 | 7292 | PASS/FAIL | PASS/FAIL |
+| gemini | history | 1349 | 2301 | PASS/FAIL | PASS/PASS |
+
+analysis JSON written to latency_evidence/phase3_analysis.json

@@ -1,0 +1,121 @@
+/turn benchmark: N=100, mode=empty history, url=http://127.0.0.1:8100
+ 1 first_event=    172 ms  first_token=   1000 ms  first_sentence=  11778 ms  done=  16181 ms  tokens= 95  tok/s=   6.3
+ 2 first_event=    156 ms  first_token=   1558 ms  first_sentence=   6953 ms  done=  10919 ms  tokens= 47  tok/s=   5.0
+ 3 first_event=    156 ms  first_token=  10029 ms  first_sentence=  10048 ms  done=  10127 ms  tokens= 70  tok/s= 712.5
+ 4 first_event=    135 ms  first_token=   3454 ms  first_sentence=   3979 ms  done=   4546 ms  tokens= 72  tok/s=  65.9
+ 5 first_event=    173 ms  first_token=   3300 ms  first_sentence=   4140 ms  done=   4530 ms  tokens= 76  tok/s=  61.8
+ 6 first_event=    151 ms  first_token=   1553 ms  first_sentence=   1553 ms  done=   1555 ms  tokens= 21  tok/s=12170.6
+ 7 first_event=    138 ms  first_token=   6344 ms  first_sentence=   7321 ms  done=  16221 ms  tokens=639  tok/s=  64.7
+ 8 first_event=    152 ms  first_token=  14348 ms  first_sentence=  14760 ms  done=  19472 ms  tokens=404  tok/s=  78.9
+ 9 first_event=    123 ms  first_token=    900 ms  first_sentence=   2841 ms  done=   7116 ms  tokens=202  tok/s=  32.5
+10 first_event=    166 ms  first_token=   1509 ms  first_sentence=  20369 ms  done= 215591 ms  tokens=580  tok/s=   2.7
+11 first_event=    177 ms  first_token=    753 ms  first_sentence=   1655 ms  done=   2601 ms  tokens= 68  tok/s=  36.8
+12 first_event=    165 ms  first_token=   7075 ms  first_sentence=   7929 ms  done=   9474 ms  tokens= 63  tok/s=  26.3
+13 first_event=    160 ms  first_token=   5389 ms  first_sentence=   5793 ms  done=   6427 ms  tokens= 80  tok/s=  77.1
+14 first_event=    152 ms  first_token=   3554 ms  first_sentence=   4369 ms  done=   6049 ms  tokens=139  tok/s=  55.7
+15 first_event=    178 ms  first_token=   6391 ms  first_sentence=   7329 ms  done=   7963 ms  tokens= 75  tok/s=  47.7
+16 first_event=    188 ms  first_token=   5340 ms  first_sentence=   5437 ms  done=   6503 ms  tokens= 53  tok/s=  45.6
+17 first_event=    164 ms  first_token=  15973 ms  first_sentence=  17022 ms  done=  29031 ms  tokens=488  tok/s=  37.4
+18 first_event=    156 ms  first_token=   8618 ms  first_sentence=  10362 ms  done=  14345 ms  tokens=271  tok/s=  47.3
+19 first_event=    135 ms  first_token=   6428 ms  first_sentence=   6899 ms  done=   9009 ms  tokens=168  tok/s=  65.1
+20 first_event=    180 ms  first_token=    851 ms  first_sentence=   3559 ms  done=  16296 ms  tokens=411  tok/s=  26.6
+21 first_event=    167 ms  first_token=   4288 ms  first_sentence=   4924 ms  done=   5767 ms  tokens= 64  tok/s=  43.3
+22 first_event=    180 ms  first_token=   3643 ms  first_sentence=   4355 ms  done=   4402 ms  tokens= 25  tok/s=  32.9
+23 first_event=    175 ms  first_token=    825 ms  first_sentence=   4718 ms  done=   5528 ms  tokens= 63  tok/s=  13.4
+24 first_event=    159 ms  first_token=    577 ms  first_sentence=   1208 ms  done=   1923 ms  tokens= 82  tok/s=  60.9
+25 first_event=    170 ms  first_token=   5155 ms  first_sentence=  11526 ms  done=  27068 ms  tokens= 81  tok/s=   3.7
+26 first_event=    142 ms  first_token=  17702 ms  first_sentence=  18053 ms  done=  20785 ms  tokens= 55  tok/s=  17.8
+27 first_event=    156 ms  first_token=  22664 ms  first_sentence=  23596 ms  done=  44802 ms  tokens=874  tok/s=  39.5
+28 first_event=    150 ms  first_token=   7994 ms  first_sentence=   8705 ms  done=  17159 ms  tokens=585  tok/s=  63.8
+29 first_event=    129 ms  first_token=  14440 ms  first_sentence=  15351 ms  done=  20394 ms  tokens=133  tok/s=  22.3
+30 first_event=    193 ms  first_token=  11526 ms  first_sentence=  11932 ms  done=  17114 ms  tokens=337  tok/s=  60.3
+31 first_event=    180 ms  first_token=   6468 ms  first_sentence=   7744 ms  done=   7768 ms  tokens= 94  tok/s=  72.3
+32 first_event=    183 ms  first_token=    573 ms  first_sentence=   1335 ms  done=   1978 ms  tokens= 53  tok/s=  37.7
+33 first_event=    159 ms  first_token=   5889 ms  first_sentence=   6454 ms  done=   8686 ms  tokens=137  tok/s=  49.0
+34 first_event=    168 ms  first_token=   5002 ms  first_sentence=   6141 ms  done=   7453 ms  tokens= 74  tok/s=  30.2
+35 first_event=    169 ms  first_token=   2277 ms  first_sentence=   3217 ms  done=   6608 ms  tokens= 57  tok/s=  13.2
+36 first_event=    149 ms  first_token=   1939 ms  first_sentence=   2538 ms  done=   6797 ms  tokens= 45  tok/s=   9.3
+37 first_event=    139 ms  first_token=   9581 ms  first_sentence=  10056 ms  done=  20029 ms  tokens=558  tok/s=  53.4
+38 first_event=    154 ms  first_token=   6088 ms  first_sentence=   6614 ms  done=  12491 ms  tokens=424  tok/s=  66.2
+39 first_event=    137 ms  first_token=  10706 ms  first_sentence=  10765 ms  done=  16302 ms  tokens=206  tok/s=  36.8
+40 first_event=    162 ms  first_token=    693 ms  first_sentence=   2103 ms  done=  39782 ms  tokens=338  tok/s=   8.6
+41 first_event=    160 ms  first_token=   9657 ms  first_sentence=  10987 ms  done=  12767 ms  tokens= 87  tok/s=  28.0
+42 first_event=    204 ms  first_token=   4063 ms  first_sentence=   4626 ms  done=   5375 ms  tokens= 45  tok/s=  34.3
+43 first_event=    171 ms  first_token=    949 ms  first_sentence=   5349 ms  done=   7756 ms  tokens= 61  tok/s=   9.0
+44 first_event=    153 ms  first_token=   3720 ms  first_sentence=   4752 ms  done=   4807 ms  tokens= 47  tok/s=  43.2
+45 first_event=    196 ms  first_token=   3580 ms  first_sentence=   4713 ms  done=   5148 ms  tokens= 78  tok/s=  49.7
+46 first_event=    153 ms  first_token=   1795 ms  first_sentence=   5062 ms  done=   6823 ms  tokens= 43  tok/s=   8.6
+47 first_event=    136 ms  first_token=   1527 ms  first_sentence=   7377 ms  done=  48691 ms  tokens=386  tok/s=   8.2
+48 first_event=    150 ms  first_token=   1528 ms  first_sentence=  11073 ms  done=  56540 ms  tokens=334  tok/s=   6.1
+49 first_event=    133 ms  first_token=   1461 ms  first_sentence=   2865 ms  done=  16587 ms  tokens=473  tok/s=  31.3
+50 first_event=    178 ms  first_token=  15124 ms  first_sentence=  15544 ms  done=  28639 ms  tokens=703  tok/s=  52.0
+51 first_event=    166 ms  first_token=   5217 ms  first_sentence=   6120 ms  done=   7067 ms  tokens=112  tok/s=  60.5
+52 first_event=    162 ms  first_token=   2274 ms  first_sentence=   2765 ms  done=   2867 ms  tokens= 46  tok/s=  77.6
+53 first_event=    159 ms  first_token=   3889 ms  first_sentence=   4231 ms  done=   5264 ms  tokens= 44  tok/s=  32.0
+54 first_event=    157 ms  first_token=  13995 ms  first_sentence=  15026 ms  done=  17305 ms  tokens=121  tok/s=  36.6
+55 first_event=    159 ms  first_token=   5091 ms  first_sentence=   6335 ms  done=   7634 ms  tokens= 80  tok/s=  31.5
+56 first_event=    143 ms  first_token=    675 ms  first_sentence=    784 ms  done=   2042 ms  tokens= 53  tok/s=  38.8
+57 first_event=    149 ms  first_token=    896 ms  first_sentence=   1603 ms  done=  14566 ms  tokens=426  tok/s=  31.2
+58 first_event=    170 ms  first_token=    931 ms  first_sentence=   4411 ms  done=  26239 ms  tokens=142  tok/s=   5.6
+59 first_event=    146 ms  first_token=  28212 ms  first_sentence=  29460 ms  done=  45951 ms  tokens=326  tok/s=  18.4
+60 first_event=    202 ms  first_token=   1685 ms  first_sentence=   7595 ms  done=  47157 ms  tokens=272  tok/s=   6.0
+61 first_event=    166 ms  first_token=    713 ms  first_sentence=   1301 ms  done=   2773 ms  tokens= 99  tok/s=  48.1
+62 first_event=    193 ms  first_token=    859 ms  first_sentence=   1610 ms  done=   2250 ms  tokens= 49  tok/s=  35.2
+63 first_event=    187 ms  first_token=   3333 ms  first_sentence=   3651 ms  done=   4441 ms  tokens= 58  tok/s=  52.3
+64 first_event=    161 ms  first_token=   6925 ms  first_sentence=   7739 ms  done=   8528 ms  tokens= 74  tok/s=  46.2
+65 first_event=    185 ms  first_token=   6895 ms  first_sentence=   7952 ms  done=   8633 ms  tokens= 68  tok/s=  39.1
+66 first_event=    145 ms  first_token=    622 ms  first_sentence=    694 ms  done=   8109 ms  tokens= 44  tok/s=   5.9
+67 first_event=    180 ms  first_token=   8161 ms  first_sentence=   8273 ms  done=  18101 ms  tokens=572  tok/s=  57.5
+68 first_event=    185 ms  first_token=  21848 ms  first_sentence=  25803 ms  done=  37407 ms  tokens=462  tok/s=  29.7
+69 first_event=    140 ms  first_token=   9858 ms  first_sentence=  10708 ms  done=  20224 ms  tokens=376  tok/s=  36.3
+70 first_event=    278 ms  first_token=   1582 ms  first_sentence=  23198 ms  done=  53254 ms  tokens=294  tok/s=   5.7
+71 first_event=    182 ms  first_token=   6202 ms  first_sentence=   6911 ms  done=   7413 ms  tokens= 68  tok/s=  56.1
+72 first_event=    180 ms  first_token=   1974 ms  first_sentence=   2271 ms  done=   2564 ms  tokens= 47  tok/s=  79.7
+73 first_event=    172 ms  first_token=   4334 ms  first_sentence=   5585 ms  done=   6254 ms  tokens= 93  tok/s=  48.4
+74 first_event=    178 ms  first_token=  11416 ms  first_sentence=  15112 ms  done=  15122 ms  tokens= 76  tok/s=  20.5
+75 first_event=    228 ms  first_token=   7400 ms  first_sentence=   7910 ms  done=   8221 ms  tokens= 87  tok/s= 105.9
+76 first_event=    165 ms  first_token=   5158 ms  first_sentence=   5462 ms  done=   6127 ms  tokens= 43  tok/s=  44.4
+77 first_event=    160 ms  first_token=  13952 ms  first_sentence=  17117 ms  done=  94374 ms  tokens=577  tok/s=   7.2
+78 first_event=    191 ms  first_token=   5540 ms  first_sentence=   6493 ms  done=   9192 ms  tokens= 99  tok/s=  27.1
+79 first_event=    160 ms  first_token=   1865 ms  first_sentence=   8396 ms  done=  69033 ms  tokens=353  tok/s=   5.3
+80 first_event=    159 ms  first_token=   8192 ms  first_sentence=   9926 ms  done=  17604 ms  tokens=539  tok/s=  57.3
+81 first_event=    191 ms  first_token=   4060 ms  first_sentence=   4558 ms  done=   5152 ms  tokens= 97  tok/s=  88.8
+82 first_event=    195 ms  first_token=    833 ms  first_sentence=   1528 ms  done=   2234 ms  tokens= 37  tok/s=  26.4
+83 first_event=    185 ms  first_token=  16109 ms  first_sentence=  17477 ms  done=  22116 ms  tokens=102  tok/s=  17.0
+84 first_event=    169 ms  first_token=  20141 ms  first_sentence=  22704 ms  done=  24583 ms  tokens=100  tok/s=  22.5
+85 first_event=    177 ms  first_token=    580 ms  first_sentence=   1436 ms  done=   2412 ms  tokens= 56  tok/s=  30.6
+86 first_event=    152 ms  first_token=   5877 ms  first_sentence=   5990 ms  done=   7335 ms  tokens= 82  tok/s=  56.3
+87 first_event=    159 ms  first_token=   7778 ms  first_sentence=   8543 ms  done=  19099 ms  tokens=597  tok/s=  52.7
+88 first_event=    169 ms  first_token=   4788 ms  first_sentence=   5933 ms  done=   8503 ms  tokens=221  tok/s=  59.5
+89 first_event=    153 ms  first_token=  11085 ms  first_sentence=  11372 ms  done=  14045 ms  tokens=171  tok/s=  57.8
+90 first_event=    159 ms  first_token=   1400 ms  first_sentence=   3122 ms  done=  29219 ms  tokens=525  tok/s=  18.9
+91 first_event=    174 ms  first_token=   4422 ms  first_sentence=   4832 ms  done=   6279 ms  tokens=134  tok/s=  72.1
+92 first_event=    181 ms  first_token=   4821 ms  first_sentence=   5021 ms  done=   5978 ms  tokens= 75  tok/s=  64.8
+93 first_event=    183 ms  first_token=  13829 ms  first_sentence=  16554 ms  done=  19433 ms  tokens= 98  tok/s=  17.5
+94 first_event=    166 ms  first_token=   4251 ms  first_sentence=   5253 ms  done=   5306 ms  tokens= 61  tok/s=  57.8
+95 first_event=    169 ms  first_token=   7177 ms  first_sentence=   7895 ms  done=   8579 ms  tokens=100  tok/s=  71.3
+96 first_event=    146 ms  first_token=   6407 ms  first_sentence=   6452 ms  done=   7747 ms  tokens=135  tok/s= 100.7
+97 first_event=    155 ms  first_token=   8121 ms  first_sentence=   8354 ms  done=  20202 ms  tokens=753  tok/s=  62.3
+98 first_event=    140 ms  first_token=   1350 ms  first_sentence=  17373 ms  done=  64906 ms  tokens=487  tok/s=   7.7
+99 first_event=    143 ms  first_token=   1337 ms  first_sentence=   8384 ms  done=  56454 ms  tokens=370  tok/s=   6.7
+100 first_event=    170 ms  first_token=  11721 ms  first_sentence=  11733 ms  done=  20189 ms  tokens=459  tok/s=  54.2
+summary (ms)
+  first SSE event  p50     164  p90     188  p95     195  p99     228  max     278  n 100/100
+  first token      p50    4912  p90   13995  p95   16109  p99   22664  max   28212  n 100/100
+  first sentence   p50    6554  p90   17022  p95   20369  p99   25803  max   29460  n 100/100
+  done             p50    8848  p90   44802  p95   56454  p99   94374  max  215591  n 100/100
+first-token histogram
+      0-500   ms     0
+    500-1000  ms    16 ###############
+   1000-1500  ms     5 #####
+   1500-2000  ms    11 ###########
+   2000-3000  ms     2 ##
+   3000-5000  ms    16 ###############
+   5000-10000 ms    31 ##############################
+  10000-20000 ms    15 ###############
+  >=20000    ms     4 ####
+generation (lexical-token proxy; words, numbers, and punctuation)
+  output tokens/s  p50 38.2  p10 6.3  n 100
+  first-sentence tokens mean 35.1  n 100/100
+  first-sentence p50 decomposition  TTFT 4912 ms + generation 855 ms
+raw JSON written to latency_evidence/phase3_deepseek_empty_N100.json

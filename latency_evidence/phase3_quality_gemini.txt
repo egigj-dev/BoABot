@@ -1,0 +1,127 @@
+phase-3 quality benchmark: model=google/gemini-3.1-flash-lite
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 22535.46it/s]
+ 1/20 grounded=PASS  citation=yes  rate_0092  Dua te di sa eshte komisioni vjetor i mirembajtjes se kartes se kreditit te Banka Raiffeisen
+      answer: Komisioni vjetor i mirëmbajtjes së kartës së kreditit për Bankën Raiffeisen është 2'000.00.  Burimi: "Komisionet për biznese" (https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/)
+ 2/20 grounded=PASS  citation=yes  rate_0094  Nese me duhet nje pin i ri per karten e kreditit, sa me kushton te Banka Kombëtare Tregtare?
+      answer: Për marrjen e një PIN-i të ri për kartën e kreditit te Banka Kombëtare Tregtare, komisioni është 500.00 lekë.  Burimi: Dokumenti "Komisionet për biznese", seksioni: "Komisionet për biznese — Karte krediti — Dhenia e nje Pin-i te ri".
+ 3/20 grounded=PASS  citation=yes  rate_0007  Interesi per depozite me afat 3 muajsh tek Banka Tirana sa eshte?
+      answer: Bazuar në dokumentin "Normat e interesit të depozitave", normat e interesit për depozitat me afat 3-mujor për Bankën Tirana janë:  *   **Për shumën minimale:** 0.30% *   **Për shumën maksimale:** 0.70%  Burimi: "Normat e interesit të depozitave" (Tabelat: Depozita për individë — DEPOZITA ME AFAT 3 mujor në shumën minimale dhe maksimale).
+ 4/20 grounded=PASS  citation=yes  rate_0019  Sa jane normat per depozita 36-mujore te Banka OTP Albania?
+      answer: Normat e interesit për depozitat 36-mujore të Bankës OTP Albania janë si më poshtë:  *   **Shuma minimale:** 2.40% *   **Shuma maksimale:** 2.60%  Burimi: "Normat e interesit të depozitave" (https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Normat_e_interesit_te_depozitave/).
+ 5/20 grounded=PASS  citation=yes  rate_0085  Komisioni administrimit te kredise konsumatore te pasiguruara tek Banka Intesa SanPaolo e Shqipërisë sa eshte ne perqindje?
+      answer: Komisioni i administrimit për kredi konsumatore të pasiguruara te Banka Intesa SanPaolo e Shqipërisë është 0.02% (në përqindje).  Burimi: "Komisionet për individë", tabela "Kredi konsumatore te pasiguruara — Komisione administrimi %".
+ 6/20 grounded=PASS  citation=yes  rate_0055  Per kredi per shtepi, sa eshte komisioni per ristrukturim minimal ne Banka Tirana?
+      answer: Komisioni minimal për ristrukturimin e kredisë për shtëpi në Bankën Tirana është 4,200.00.  Burimi: "Komisionet për individë", tabela: "Komisionet për individë — Kredi per shtepi — Komision për ristrukturimin e kredive MIN".
+ 7/20 grounded=PASS  citation=yes  rate_0113  Sa paguaj per terheqje cash nga banka te tjera me karte debiti ne Banka Union?
+      answer: Për tërheqje cash me kartë debiti nga terminalet e bankave të tjera në Bankën Union, aplikohen tarifat e mëposhtme:  *   **Përqindja:** 2.00% *   **Shuma minimale (MIN):** 350.00  Burimi: "Komisionet për biznese"
+ 8/20 grounded=PASS  citation=yes  rate_0084  Komisioni i administrimit per kredi konsumatore te pasiguruara, minimumi, tek Banka Raiffeisen?
+      answer: Komisioni i administrimit për kredi konsumatore të pasiguruara (minimumi) tek Banka Raiffeisen është 3'000.00.  Burimi: "Komisionet për individë", tabelat e të dhënave për kredi konsumatore të pasiguruara (MIN).
+ 9/20 grounded=PASS  citation=yes  rate_0027  Me interesojne normat e biznesit te vogel me maturitet 0-12 muaj
+      answer: Sipas dokumentit "Normat nominale dhe NEI për bizneset", normat e interesit për biznesin e vogël me maturitet 0-12 muaj janë si më poshtë:  *   8.00 *   6.00 *   9.00 *   10.50  Burimi: "Normat nominale dhe NEI për bizneset" (rate_0027, rate_0035).
+10/20 grounded=PASS  citation=yes  rate_0088  Per shlyerje te parakohshme te kredise konsumatore te pasiguruara, sa eshte komisioni minimal tek Banka Procredit?
+      answer: Sipas dokumentit "Komisionet për individë", komisioni minimal për shlyerje të parakohshme të kredisë konsumatore të pasiguruar te Banka Procredit është 0.00.
+11/20 grounded=PASS  citation=yes  rate_0077  Cili eshte komisioni per ndryshimin e kontrates se kredise me hipoteke tek Banka Credins?
+      answer: Për kredinë konsumatore me hipotekë, komisioni për ndryshimin e kontratës së kredisë tek Banka Credins është 0.00% (Burimi: "Komisionet për individë").
+12/20 grounded=PASS  citation=yes  rate_0112  Po deshta te terheq para nga nje banke tjeter me karten e debitit tek Banka Credins, sa komision me marrin?
+      answer: Sipas dokumentit "Komisionet për biznese", komisioni për tërheqje cash me kartë debiti nga terminalet e bankave të tjera për Bankën Credins është 0.00%.
+13/20 grounded=PASS  citation=yes  rate_0107  Sa eshte pagesa per leshimin e kartes se debitit ne Banka OTP Albania?
+      answer: Sipas dokumentit "Komisionet për biznese", komisioni për lëshimin e kartës së debitit për Bankën OTP Albania është 1'000.00.
+14/20 grounded=PASS  citation=yes  rate_0068  Sa eshte komisioni i administrimit per kredi konsumatore me hipoteke ne Banka Procredit?
+      answer: Bazuar në dokumentin "Komisionet për individë", për kreditë konsumatore me hipotekë në Banka Procredit:  *   Komisioni i shërbimit/mirëmbajtjes së llogarisë së kredisë është 0.00% (Burimi: "Komisionet për individë", tabela: *Komision sherbimi/mirembajtje te llogarise se kredise %*). *   Vlera maksimale e komisionit të shërbimit/mirëmbajtjes së llogarisë së kredisë është 0.00 (Burimi: "Komisionet për individë", tabela: *Komision sherbimi/mirembajtje te llogarise se kredise MAX*).
+15/20 grounded=PASS  citation=yes  rate_0001  Per depozita pa afat te Banka Amerikane e Investimeve Shqiperi sa interes japin?
+      answer: Për depozitat pa afat, Banka Amerikane e Investimeve Shqipëri ofron një normë interesi prej 0.03.  Burimi: "Normat e interesit të depozitave" (https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Normat_e_interesit_te_depozitave/)
+16/20 grounded=PASS  citation=yes  rate_0091  Sa eshte komisioni per leshimin e kartes se kreditit ne Banka Kombëtare Tregtare?
+      answer: Komisioni për lëshimin e kartës së kreditit (sipas kushteve të punës) në Bankën Kombëtare Tregtare është 0.00.  Burimi: "Komisionet për biznese" (https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/).
+17/20 grounded=PASS  citation=yes  rate_0012  Sa eshte norma per depozita me afat 12-mujor ne Banka Credins?
+      answer: Sipas dokumentit "Normat e interesit të depozitave", normat për depozitat me afat 12-mujor në Banka Credins janë:  *   **Në shumën minimale:** 1.20 *   **Në shumën maksimale:** 1.50  Burimi: "Normat e interesit të depozitave" (https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Normat_e_interesit_te_depozitave/).
+18/20 grounded=PASS  citation=yes  rate_0042  Dua te di sa eshte komisioni i disbursimit per kredi per shtepi ne Banka e Bashkuar e Shqipërisë
+      answer: Komisioni i disbursimit për kredi për shtëpi në Bankën e Bashkuar të Shqipërisë është 2.00%.  Burimi: "Komisionet për individë" (https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_individe/)
+19/20 grounded=PASS  citation=yes  rate_0102  Sa eshte komisioni i terheqjes se parave nga terminalet jashte shtetit me karte krediti tek Banka Raiffeisen?
+      answer: Për tërheqjen e parave (cash) nga terminalet jashtë shtetit me kartë krediti tek Banka Raiffeisen, komisionet sipas dokumentit "Komisionet për biznese" janë:  *   **Komisioni MIN:** 1'000.00 (Burimi: "Komisionet për biznese", ID: rate_0100) *   **Komisioni MAX:** 1'000.00 (Burimi: "Komisionet për biznese", ID: rate_0102)
+20/20 grounded=PASS  citation=yes  rate_0106  Sa eshte interesi penalizues nese nuk paguaj karten e kreditit te Banka e Parë e Investimeve Albania?
+      answer: Interesi penalizues për mosshlyerje të detyrimit për kartën e kreditit te Banka e Parë e Investimeve Albania është 42.00%.  Burimi: Komisionet për biznese (https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/)
+model refusal PASS: Si do të jetë moti nesër në Tiranë?
+  answer: Informacioni nuk gjendet në korpus.
+model refusal PASS: Kush e fitoi ndeshjen e fundit të futbollit?
+  answer: Informacioni nuk gjendet në korpus.
+model refusal PASS: A duhet të blej Bitcoin sot?
+  answer: Informacioni mbi blerjen e Bitcoin nuk gjendet në korpusin e të dhënave të ofruara.
+model refusal PASS: Më shkruaj një recetë për darkë.
+  answer: Informacioni nuk gjendet në korpus.
+model refusal PASS: Cili është trajtimi mjekësor për dhimbjen e kokës?
+  answer: Informacioni për trajtimin mjekësor të dhimbjes së kokës nuk gjendet në korpusin e materialeve në dispozicion. Unë jam asistent i specializuar vetëm për rregulloret bankare shqiptare dhe tarifat e bankave.
+policy refusal business_deposit_gap: PASS
+  expected_route=unsupported outcome=unsupported answer=Nuk mund të jap normë për depozita të bizneseve, sepse kjo kategori nuk gjendet në korpusin aktual. Tabelat përmbajnë norma depozitash për individë, por jo për biznese; nuk do të hamendësoj shifra.
+policy refusal business_follow_up: PASS
+  expected_route=model outcome=answer answer=Normat e interesit për depozitat e individëve (në shumen maksimale) për bankat në Shqipëri janë si më poshtë, sipas dokumentit "Normat e interesit të depozitave":
+
+**Depozita 1-mujore:**
+* Banka Amerikane e Investimeve: 0.20
+* Banka Credins: 0.50
+* Banka e Bashkuar e Shqipërisë: 0.70
+* Banka e Parë e Investimeve Albania: 1.00
+* Banka Kombëtare Tregtare: 0.80
+* Banka OTP Albania: 0.07
+* Banka Raiffeisen: 0.01
+* Banka Tirana: 0.20
+* Banka Union: 0.70
+
+**Depozita 6-mujore:**
+* Banka Amerikane e Investimeve: 0.40
+* Banka Credins: 1.20
+* Banka e Bashkuar e Shqipërisë: 1.20
+* Banka e Parë e Investimeve Albania: 0.16
+* Banka Intesa SanPaolo e Shqipërisë: 1.20
+* Banka Kombëtare Tregtare: 1.30
+* Banka OTP Albania: 0.50
+* Banka Raiffeisen: 0.01
+* Banka Tirana: 1.00
+* Banka Union: 1.40
+
+**Depozita 12-mujore:**
+* Banka Amerikane e Investimeve: 0.80
+* Banka Credins: 1.50
+* Banka e Bashkuar e Shqipërisë: 1.40
+* Banka e Parë e Investimeve Albania: 2.50
+* Banka Intesa SanPaolo e Shqipërisë: 1.60
+* Banka Kombëtare Tregtare: 1.60
+* Banka OTP Albania: 0.85
+* Banka Procredit: 1.00
+* Banka Raiffeisen: 0.01
+* Banka Tirana: 1.30
+* Banka Union: 1.80
+
+**Depozita 24-mujore:**
+* Banka Amerikane e Investimeve: 1.00
+* Banka Credins: 1.80
+* Banka e Bashkuar e Shqipërisë: 2.00
+* Banka e Parë e Investimeve Albania: 2.80
+* Banka Intesa SanPaolo e Shqipërisë: 1.90
+* Banka Kombëtare Tregtare: 2.00
+* Banka OTP Albania: 1.60
+* Banka Procredit: 1.60
+* Banka Raiffeisen: 0.01
+* Banka Tirana: 1.60
+* Banka Union: 2.40
+
+**Depozita 36-mujore:**
+* Banka Amerikane e Investimeve: 1.50
+* Banka Credins: 2.50
+* Banka e Bashkuar e Shqipërisë: 2.20
+* Banka Intesa SanPaolo e Shqipërisë: 2.30
+* Banka Kombëtare Tregtare: 2.40
+* Banka OTP Albania: 2.60
+* Banka Procredit: 1.90
+* Banka Raiffeisen: 0.01
+* Banka Tirana: 1.90
+* Banka Union: 2.90
+  expected_route=unsupported outcome=unsupported answer=Nuk mund të jap normë për depozita të bizneseve, sepse kjo kategori nuk gjendet në korpusin aktual. Tabelat përmbajnë norma depozitash për individë, por jo për biznese; nuk do të hamendësoj shifra.
+policy refusal encoded_override: PASS
+  expected_route=unsupported outcome=unsupported answer=Ju lutem dërgoni një pyetje të qartë, me tekst të zakonshëm, për rregulloret bankare ose tarifat. Nuk mund të përpunoj udhëzime për të anashkaluar sjelljen e asistentit ose tekst të koduar.
+summary
+  numeric groundedness 20/20
+  citation presence    20/20
+  direct model refusal 5/5
+  /turn policy refusal 3/3 cases
+raw JSON written to latency_evidence/phase3_quality_gemini.json
