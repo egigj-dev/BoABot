@@ -1,0 +1,188 @@
+catalog price: $0.0882/M input, $0.1764/M output
+provider TTFT benchmark (BoABot code bypassed)
+  N=100, model=deepseek/deepseek-v4-flash, k=5, layout=combined, prompt=current, reasoning=auto, one fixed fixture
+    1/100 ttft=   4199 ms  done=  32632 ms  in=1722  out=127  reason=  0  cached=   0
+    2/100 ttft=    357 ms  done=   1283 ms  in=1722  out= 72  reason=  0  cached=   0
+    3/100 ttft=   2241 ms  done=  52382 ms  in=1722  out=169  reason=  0  cached=   0
+    4/100 ttft=  10002 ms  done=  15981 ms  in=1722  out=514  reason=208  cached=   0
+    5/100 ttft=    450 ms  done=   2187 ms  in=1722  out=133  reason=  0  cached=   0
+    6/100 ttft=   2587 ms  done=  45099 ms  in=1722  out=144  reason=  0  cached=   0
+    7/100 ttft=   3791 ms  done=  44332 ms  in=1722  out=165  reason=  0  cached=1536
+    8/100 ttft=   1409 ms  done=  22565 ms  in=1722  out= 75  reason=  0  cached=1536
+    9/100 ttft=   2730 ms  done=  40178 ms  in=1722  out=134  reason=  0  cached=1536
+   10/100 ttft=   2406 ms  done=  13563 ms  in=1722  out= 55  reason=  0  cached=   0
+   11/100 ttft=   3102 ms  done=  49145 ms  in=1722  out=187  reason=  0  cached=1536
+   12/100 ttft=  14045 ms  done=  18025 ms  in=1722  out=696  reason=513  cached=   0
+   13/100 ttft=   2902 ms  done=  21651 ms  in=1722  out=130  reason=  0  cached=1536
+   14/100 ttft=   2315 ms  done=  24573 ms  in=1722  out=138  reason=  0  cached=1536
+   15/100 ttft=   1647 ms  done=  37815 ms  in=1722  out=139  reason=  0  cached=1536
+   16/100 ttft=    692 ms  done=   9432 ms  in=1722  out= 46  reason=  0  cached=1536
+   17/100 ttft=   5244 ms  done=  13211 ms  in=1722  out= 63  reason=  0  cached=   0
+   18/100 ttft=   2110 ms  done=  33225 ms  in=1722  out=142  reason=  0  cached=1536
+   19/100 ttft=   1926 ms  done=  29780 ms  in=1722  out=118  reason=  0  cached=1536
+   20/100 ttft=  11465 ms  done=  13738 ms  in=1722  out=158  reason=  0  cached=   0
+   21/100 ttft=   1976 ms  done=  32646 ms  in=1722  out=148  reason=  0  cached=1536
+   22/100 ttft=   1812 ms  done=  36651 ms  in=1722  out=131  reason=  0  cached=1536
+   23/100 ttft=   1796 ms  done=  31314 ms  in=1722  out=153  reason=  0  cached=   0
+   24/100 ttft=    487 ms  done=   2493 ms  in=1722  out=149  reason=  0  cached=1536
+   25/100 ttft=    447 ms  done=   2474 ms  in=1722  out=157  reason=  0  cached=1536
+   26/100 ttft=    309 ms  done=   2720 ms  in=1722  out=167  reason=  0  cached=1536
+   27/100 ttft=    299 ms  done=   2604 ms  in=1722  out=157  reason=  0  cached=1536
+   28/100 ttft=    295 ms  done=   3067 ms  in=1722  out=163  reason=  0  cached=1536
+   29/100 ttft=    334 ms  done=   2054 ms  in=1722  out=135  reason=  0  cached=1536
+   30/100 ttft=    393 ms  done=   2217 ms  in=1722  out=135  reason=  0  cached=1536
+   31/100 ttft=    304 ms  done=   2364 ms  in=1722  out=159  reason=  0  cached=1536
+   32/100 ttft=    544 ms  done=   2374 ms  in=1722  out=135  reason=  0  cached=1536
+   33/100 ttft=    305 ms  done=   2669 ms  in=1722  out=151  reason=  0  cached=1536
+   34/100 ttft=    373 ms  done=   2168 ms  in=1722  out=140  reason=  0  cached= 256
+   35/100 ttft=    364 ms  done=   2788 ms  in=1722  out=159  reason=  0  cached=1536
+   36/100 ttft=    325 ms  done=   1388 ms  in=1722  out= 83  reason=  0  cached=1536
+   37/100 ttft=    596 ms  done=   2875 ms  in=1722  out=161  reason=  0  cached=1536
+   38/100 ttft=    297 ms  done=   3297 ms  in=1722  out=159  reason=  0  cached=1536
+   39/100 ttft=    438 ms  done=   2671 ms  in=1722  out=169  reason=  0  cached=   0
+   40/100 ttft=    386 ms  done=   2615 ms  in=1722  out=167  reason=  0  cached=1536
+   41/100 ttft=    558 ms  done=   2894 ms  in=1722  out=134  reason=  0  cached=1536
+   42/100 ttft=    368 ms  done=   2125 ms  in=1722  out=134  reason=  0  cached=1536
+   43/100 ttft=    757 ms  done=   3060 ms  in=1722  out=157  reason=  0  cached=1536
+   44/100 ttft=    349 ms  done=   3376 ms  in=1722  out=167  reason=  0  cached=1536
+   45/100 ttft=    317 ms  done=   2124 ms  in=1722  out=139  reason=  0  cached=1536
+   46/100 ttft=    348 ms  done=   2682 ms  in=1722  out=154  reason=  0  cached=1536
+   47/100 ttft=    368 ms  done=   2104 ms  in=1722  out=133  reason=  0  cached=1536
+   48/100 ttft=    384 ms  done=   1778 ms  in=1722  out=106  reason=  0  cached=1536
+   49/100 ttft=    331 ms  done=   2188 ms  in=1722  out=142  reason=  0  cached=1536
+   50/100 ttft=    302 ms  done=   2497 ms  in=1722  out=173  reason=  0  cached=1536
+   51/100 ttft=    323 ms  done=   2639 ms  in=1722  out=148  reason=  0  cached=1536
+   52/100 ttft=    327 ms  done=   2068 ms  in=1722  out=134  reason=  0  cached=1536
+   53/100 ttft=    357 ms  done=   2291 ms  in=1722  out=148  reason=  0  cached=1536
+   54/100 ttft=    332 ms  done=   2269 ms  in=1722  out=148  reason=  0  cached=1536
+   55/100 ttft=    331 ms  done=   2381 ms  in=1722  out=158  reason=  0  cached=1536
+   56/100 ttft=   1454 ms  done=   3366 ms  in=1722  out=148  reason=  0  cached=1536
+   57/100 ttft=    341 ms  done=   2606 ms  in=1722  out=173  reason=  0  cached=1536
+   58/100 ttft=    318 ms  done=   2597 ms  in=1722  out=157  reason=  0  cached=1536
+   59/100 ttft=   1159 ms  done=   3205 ms  in=1722  out= 67  reason=  0  cached=1536
+   60/100 ttft=    306 ms  done=   2251 ms  in=1722  out=146  reason=  0  cached=1536
+   61/100 ttft=    364 ms  done=   2919 ms  in=1722  out=175  reason=  0  cached=1536
+   62/100 ttft=    332 ms  done=   1926 ms  in=1722  out=124  reason=  0  cached=1536
+   63/100 ttft=    576 ms  done=   3145 ms  in=1722  out=163  reason=  0  cached=1536
+   64/100 ttft=    321 ms  done=   2629 ms  in=1722  out=177  reason=  0  cached=1536
+   65/100 ttft=   1363 ms  done=  15775 ms  in=1722  out=144  reason=  0  cached=   0
+   66/100 ttft=    324 ms  done=   2413 ms  in=1722  out=144  reason=  0  cached=1536
+   67/100 ttft=    353 ms  done=   2617 ms  in=1722  out=175  reason=  0  cached=1536
+   68/100 ttft=    307 ms  done=   2234 ms  in=1722  out=149  reason=  0  cached=1536
+   69/100 ttft=    311 ms  done=   2563 ms  in=1722  out=159  reason=  0  cached=1536
+   70/100 ttft=    374 ms  done=   2327 ms  in=1722  out=136  reason=  0  cached=1536
+   71/100 ttft=    350 ms  done=   2270 ms  in=1722  out=148  reason=  0  cached=1536
+   72/100 ttft=    345 ms  done=   2272 ms  in=1722  out=134  reason=  0  cached=1536
+   73/100 ttft=    418 ms  done=   2652 ms  in=1722  out=173  reason=  0  cached=1536
+   74/100 ttft=    348 ms  done=   2626 ms  in=1722  out=178  reason=  0  cached=1536
+   75/100 ttft=    310 ms  done=   2066 ms  in=1722  out=134  reason=  0  cached=1536
+   76/100 ttft=    330 ms  done=   2626 ms  in=1722  out=178  reason=  0  cached=1536
+   77/100 ttft=    298 ms  done=   3011 ms  in=1722  out=162  reason=  0  cached=1536
+   78/100 ttft=    326 ms  done=   2085 ms  in=1722  out=134  reason=  0  cached=1536
+   79/100 ttft=    525 ms  done=   2282 ms  in=1722  out=134  reason=  0  cached=1536
+   80/100 ttft=    318 ms  done=   2428 ms  in=1722  out=134  reason=  0  cached=1536
+   81/100 ttft=    324 ms  done=   2482 ms  in=1722  out=161  reason=  0  cached=1536
+   82/100 ttft=    533 ms  done=   2712 ms  in=1722  out=183  reason=  0  cached=1536
+   83/100 ttft=    311 ms  done=   2512 ms  in=1722  out=159  reason=  0  cached=1536
+   84/100 ttft=    358 ms  done=   2669 ms  in=1722  out=176  reason=  0  cached=1536
+   85/100 ttft=    318 ms  done=   2912 ms  in=1722  out=161  reason=  0  cached=1536
+   86/100 ttft=    358 ms  done=   2560 ms  in=1722  out=169  reason=  0  cached=1536
+   87/100 ttft=    729 ms  done=   2538 ms  in=1722  out=133  reason=  0  cached=1536
+   88/100 ttft=    312 ms  done=   2479 ms  in=1722  out=158  reason=  0  cached=1536
+   89/100 ttft=    426 ms  done=   2390 ms  in=1722  out=150  reason=  0  cached=1536
+   90/100 ttft=    385 ms  done=   2407 ms  in=1722  out=147  reason=  0  cached=1536
+   91/100 ttft=    369 ms  done=   2718 ms  in=1722  out=179  reason=  0  cached=1536
+   92/100 ttft=    312 ms  done=   2226 ms  in=1722  out=146  reason=  0  cached=1536
+   93/100 ttft=    311 ms  done=   2592 ms  in=1722  out=179  reason=  0  cached=1536
+   94/100 ttft=    298 ms  done=   2423 ms  in=1722  out=158  reason=  0  cached=1536
+   95/100 ttft=    328 ms  done=   3338 ms  in=1722  out=186  reason=  0  cached=1536
+   96/100 ttft=    314 ms  done=   2101 ms  in=1722  out=140  reason=  0  cached=1536
+   97/100 ttft=    294 ms  done=   2519 ms  in=1722  out=136  reason=  0  cached=1536
+   98/100 ttft=    397 ms  done=   2348 ms  in=1722  out=141  reason=  0  cached=   0
+   99/100 ttft=    332 ms  done=   2383 ms  in=1722  out=133  reason=  0  cached=1536
+  100/100 ttft=    305 ms  done=   2868 ms  in=1722  out=165  reason=  0  cached=1536
+summary
+  model             deepseek/deepseek-v4-flash
+  TTFT ms           p50 361  p90 2406  p95 3791  p99 11465  max 14045
+  completion ms     p50 2616  p95 37815  p99 49145
+  throughput        20.6 tokens/s
+  prompt tokens     p50 1722  min 1722  max 1722
+  cache hits        86/100 (86.0%); cached tokens 130816
+  observed cost     $0.017500
+  Pearson(tokens, TTFT) n/a (fixed token count)
+TTFT histogram
+      0-500   ms    68 ##############################
+    500-1000  ms     9 ####
+   1000-1500  ms     4 ##
+   1500-2000  ms     5 ##
+   2000-3000  ms     7 ###
+   3000-5000  ms     3 #
+   5000-10000 ms     1 #
+  10000-20000 ms     3 #
+  >=20000    ms     0 
+TTFT by prompt-token count
+   1722 tokens  n=100  p50=   361 ms  p95=  3791 ms
+
+input-size correlation probe
+  N=30, model=deepseek/deepseek-v4-flash, k=5, layout=combined, prompt=current, reasoning=auto, 10 fixtures
+    1/30 ttft=    316 ms  done=   2023 ms  in=1722  out=130  reason=  0  cached=1536
+    2/30 ttft=   1341 ms  done=   8754 ms  in=1187  out=119  reason=  0  cached=   0
+    3/30 ttft=   3588 ms  done=   4572 ms  in=1280  out=331  reason=212  cached= 256
+    4/30 ttft=   5429 ms  done=   7420 ms  in=1691  out=594  reason=403  cached=   0
+    5/30 ttft=   2330 ms  done=   4241 ms  in=1258  out=318  reason=140  cached=   0
+    6/30 ttft=   1251 ms  done=  10252 ms  in=3012  out=129  reason=  0  cached=   0
+    7/30 ttft=  12107 ms  done=  20218 ms  in=5555  out=1855  reason=966  cached=   0
+    8/30 ttft=   8736 ms  done=  20893 ms  in=3946  out=1310  reason=372  cached=   0
+    9/30 ttft=  10321 ms  done=  13769 ms  in=5321  out=1182  reason=854  cached= 256
+   10/30 ttft=  29999 ms  done=  49066 ms  in=4371  out=1909  reason=498  cached=   0
+   11/30 ttft=    371 ms  done=   2984 ms  in=1722  out=158  reason=  0  cached=1536
+   12/30 ttft=   1734 ms  done=  23631 ms  in=1187  out=104  reason=  0  cached=   0
+   13/30 ttft=   6524 ms  done=   8130 ms  in=1201  out=327  reason=196  cached=   0
+   14/30 ttft=   4331 ms  done=   6364 ms  in=1691  out=403  reason=231  cached=   0
+   15/30 ttft=   9824 ms  done=  12899 ms  in=1258  out=627  reason=442  cached= 256
+   16/30 ttft=    422 ms  done=  18191 ms  in=3012  out=116  reason=  0  cached=   0
+   17/30 ttft=   9777 ms  done=  25000 ms  in=5555  out=2398  reason=765  cached=5376
+   18/30 ttft=   8794 ms  done=  17618 ms  in=3946  out=1652  reason=655  cached=   0
+   19/30 ttft=   7081 ms  done=  11926 ms  in=5321  out=1034  reason=516  cached=5120
+   20/30 ttft=  20598 ms  done=  28234 ms  in=4371  out=1270  reason=536  cached=   0
+   21/30 ttft=    336 ms  done=   2522 ms  in=1722  out=165  reason=  0  cached=1536
+   22/30 ttft=   3639 ms  done=   4704 ms  in=1187  out=272  reason=164  cached= 256
+   23/30 ttft=  10865 ms  done=  12588 ms  in=1280  out=1128  reason=930  cached=   0
+   24/30 ttft=  15707 ms  done=  21292 ms  in=1691  out=105  reason=  0  cached=   0
+   25/30 ttft=  12831 ms  done=  19743 ms  in=1258  out=959  reason=602  cached=   0
+   26/30 ttft=    812 ms  done=   8108 ms  in=3012  out=104  reason=  0  cached=   0
+   27/30 ttft=   7168 ms  done=  21785 ms  in=5555  out=2083  reason=466  cached=5376
+   28/30 ttft=   1138 ms  done=  38757 ms  in=3946  out=347  reason=  0  cached=   0
+   29/30 ttft=  10235 ms  done=  16421 ms  in=5321  out=1489  reason=813  cached=5120
+   30/30 ttft=   7679 ms  done=  18559 ms  in=4371  out=1816  reason=572  cached= 256
+summary
+  model             deepseek/deepseek-v4-flash
+  TTFT ms           p50 6803  p90 12831  p95 20598  p99 29999  max 29999
+  completion ms     p50 13334  p95 38757  p99 49066
+  throughput        57.5 tokens/s
+  prompt tokens     p50 2367  min 1187  max 5555
+  cache hits        12/30 (40.0%); cached tokens 26880
+  observed cost     $0.013584
+  Pearson(tokens, TTFT) +0.378
+TTFT histogram
+      0-500   ms     4 #############
+    500-1000  ms     1 ###
+   1000-1500  ms     3 ##########
+   1500-2000  ms     1 ###
+   2000-3000  ms     1 ###
+   3000-5000  ms     3 ##########
+   5000-10000 ms     9 ##############################
+  10000-20000 ms     6 ####################
+  >=20000    ms     2 #######
+TTFT by prompt-token count
+   1187 tokens  n=  3  p50=  1734 ms  p95=  3639 ms
+   1201 tokens  n=  1  p50=  6524 ms  p95=  6524 ms
+   1258 tokens  n=  3  p50=  9824 ms  p95= 12831 ms
+   1280 tokens  n=  2  p50=  7226 ms  p95= 10865 ms
+   1691 tokens  n=  3  p50=  5429 ms  p95= 15707 ms
+   1722 tokens  n=  3  p50=   336 ms  p95=   371 ms
+   3012 tokens  n=  3  p50=   812 ms  p95=  1251 ms
+   3946 tokens  n=  3  p50=  8736 ms  p95=  8794 ms
+   4371 tokens  n=  3  p50= 20598 ms  p95= 29999 ms
+   5321 tokens  n=  3  p50= 10235 ms  p95= 10321 ms
+   5555 tokens  n=  3  p50=  9777 ms  p95= 12107 ms

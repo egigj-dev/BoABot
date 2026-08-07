@@ -1,0 +1,54 @@
+catalog price: $0.4/M input, $1.6/M output
+provider TTFT benchmark (BoABot code bypassed)
+  N=30, model=openai/gpt-4.1-mini, k=5, layout=combined, prompt=current, reasoning=auto, one fixed fixture
+    1/30 ttft=   1120 ms  done=   2140 ms  in=1563  out= 64  reason=  0  cached=   0
+    2/30 ttft=    603 ms  done=   1354 ms  in=1563  out= 64  reason=  0  cached=1408
+    3/30 ttft=    558 ms  done=   1264 ms  in=1563  out= 64  reason=  0  cached=1408
+    4/30 ttft=    604 ms  done=   1329 ms  in=1563  out= 64  reason=  0  cached=1408
+    5/30 ttft=    767 ms  done=   1444 ms  in=1563  out= 64  reason=  0  cached=1408
+    6/30 ttft=    583 ms  done=   1375 ms  in=1563  out= 64  reason=  0  cached=1408
+    7/30 ttft=    754 ms  done=   1598 ms  in=1563  out= 64  reason=  0  cached=1408
+    8/30 ttft=    716 ms  done=   1437 ms  in=1563  out= 64  reason=  0  cached=1408
+    9/30 ttft=    601 ms  done=   1586 ms  in=1563  out= 64  reason=  0  cached=   0
+   10/30 ttft=   1292 ms  done=   2647 ms  in=1563  out= 64  reason=  0  cached=1408
+   11/30 ttft=    780 ms  done=   1523 ms  in=1563  out= 64  reason=  0  cached=1408
+   12/30 ttft=   3094 ms  done=   4036 ms  in=1563  out= 64  reason=  0  cached=1408
+   13/30 ttft=    855 ms  done=   2268 ms  in=1563  out= 64  reason=  0  cached=   0
+   14/30 ttft=    657 ms  done=   1462 ms  in=1563  out= 64  reason=  0  cached=1408
+   15/30 ttft=    614 ms  done=   1609 ms  in=1563  out= 64  reason=  0  cached=1408
+   16/30 ttft=    680 ms  done=   1530 ms  in=1563  out= 64  reason=  0  cached=1408
+   17/30 ttft=    665 ms  done=   1644 ms  in=1563  out= 64  reason=  0  cached=1408
+   18/30 ttft=    562 ms  done=   1361 ms  in=1563  out= 64  reason=  0  cached=1408
+   19/30 ttft=   1489 ms  done=   2444 ms  in=1563  out= 64  reason=  0  cached=1408
+   20/30 ttft=    923 ms  done=   1698 ms  in=1563  out= 64  reason=  0  cached=1408
+   21/30 ttft=    783 ms  done=   2042 ms  in=1563  out= 64  reason=  0  cached=1408
+   22/30 ttft=    685 ms  done=   1539 ms  in=1563  out= 64  reason=  0  cached=1408
+   23/30 ttft=   1305 ms  done=   2399 ms  in=1563  out= 64  reason=  0  cached=1408
+   24/30 ttft=   1072 ms  done=   1714 ms  in=1563  out= 64  reason=  0  cached=1408
+   25/30 ttft=   1578 ms  done=   2681 ms  in=1563  out= 64  reason=  0  cached=1408
+   26/30 ttft=   3648 ms  done=   4624 ms  in=1563  out= 64  reason=  0  cached=   0
+   27/30 ttft=   2369 ms  done=   9055 ms  in=1563  out= 64  reason=  0  cached=1408
+   28/30 ttft=    843 ms  done=   1573 ms  in=1563  out= 64  reason=  0  cached=1408
+   29/30 ttft=    670 ms  done=   1951 ms  in=1563  out= 64  reason=  0  cached=   0
+   30/30 ttft=    646 ms  done=   1548 ms  in=1563  out= 64  reason=  0  cached=1408
+summary
+  model             openai/gpt-4.1-mini
+  TTFT ms           p50 760  p90 1578  p95 3094  p99 3648  max 3648
+  completion ms     p50 1603  p95 4624  p99 9055
+  throughput        57.6 tokens/s
+  prompt tokens     p50 1563  min 1563  max 1563
+  cache hits        25/30 (83.3%); cached tokens 35200
+  observed cost     $0.011268
+  Pearson(tokens, TTFT) n/a (fixed token count)
+TTFT histogram
+      0-500   ms     0 
+    500-1000  ms    21 ##############################
+   1000-1500  ms     5 #######
+   1500-2000  ms     1 #
+   2000-3000  ms     1 #
+   3000-5000  ms     2 ###
+   5000-10000 ms     0 
+  10000-20000 ms     0 
+  >=20000    ms     0 
+TTFT by prompt-token count
+   1563 tokens  n= 30  p50=   760 ms  p95=  3094 ms

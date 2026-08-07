@@ -38,11 +38,16 @@ def sse(obj):
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
-def stream_answer(messages):
+def stream_answer(messages, session_id=None):
     """Yield answer tokens and convert upstream protocol failures into RAG errors."""
+    payload = {"model": MODEL, "messages": messages, "stream": True}
+    if session_id:
+        # OpenRouter uses this as the sticky-routing key, keeping one conversation
+        # on a cache-capable provider without changing model selection.
+        payload["session_id"] = session_id
     try:
         with requests.post(API, headers={"Authorization": f"Bearer {KEY}"},
-                           json={"model": MODEL, "messages": messages, "stream": True},
+                           json=payload,
                            stream=True, timeout=90) as response:
             response.raise_for_status()
             # OpenRouter may omit a charset on SSE responses; default decoding is then ISO-8859-1.
@@ -316,7 +321,7 @@ def generate_turn(req: TurnReq):
         messages = grounded_messages(decision.question, session.history, hits)
 
         answer_parts = []
-        for token in stream_answer(messages):
+        for token in stream_answer(messages, session.session_id):
             answer_parts.append(token)
             yield sse({"type": "token", "text": token})
         answer = "".join(answer_parts).strip()

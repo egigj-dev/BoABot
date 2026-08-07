@@ -1,0 +1,16 @@
+/turn benchmark: N=10, mode=empty history, url=http://127.0.0.1:8100
+ 1 first_event=    178 ms  first_token=   1473 ms  first_sentence=   5891 ms  done=  12146 ms
+ 2 first_event=    188 ms  first_token=   4282 ms  first_sentence=   4943 ms  done=   5264 ms
+ 3 first_event=    163 ms  first_token=   7717 ms  first_sentence=   8679 ms  done=  10922 ms
+ 4 first_event=    165 ms  first_token=   5421 ms  first_sentence=   6513 ms  done=   6550 ms
+ 5 first_event=    207 ms  first_token=   5321 ms  first_sentence=   5902 ms  done=   7039 ms
+ 6 first_event=    156 ms  first_token=  12123 ms  first_sentence=  12414 ms  done=  13274 ms
+ 7 first_event=    152 ms  first_token=   7673 ms  first_sentence=   9153 ms  done=  56079 ms
+ 8 first_event=    257 ms  first_token=  13035 ms  first_sentence=  14073 ms  done=  21772 ms
+ 9 first_event=    132 ms  first_token=   9627 ms  first_sentence=  10486 ms  done=  15642 ms
+10 first_event=    180 ms  first_token=  18694 ms  first_sentence=  19120 ms  done=  24665 ms
+summary (ms)
+  first SSE event  p50     171  p90     207  p95     257  p99     257  max     257  n 10/10
+  first token      p50    7695  p90   13035  p95   18694  p99   18694  max   18694  n 10/10
+  first sentence   p50    8916  p90   14073  p95   19120  p99   19120  max   19120  n 10/10
+  done             p50   12710  p90   24665  p95   56079  p99   56079  max   56079  n 10/10

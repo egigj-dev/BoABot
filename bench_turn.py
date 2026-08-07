@@ -126,7 +126,10 @@ def main() -> None:
         values = [float(result[key]) for result in results if result[key] is not None]
         print(
             f"  {label:<16} p50 {statistics.median(values):7.0f}  "
-            f"p95 {percentile(values, 0.95):7.0f}  n {len(values)}/{len(results)}"
+            f"p90 {percentile(values, 0.90):7.0f}  "
+            f"p95 {percentile(values, 0.95):7.0f}  "
+            f"p99 {percentile(values, 0.99):7.0f}  "
+            f"max {max(values):7.0f}  n {len(values)}/{len(results)}"
         )
 
 

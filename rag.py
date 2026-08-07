@@ -127,7 +127,10 @@ def needs_rewrite(question, history):
 def grounded_messages(question, history, hits):
     """Build one completion request with already-vetted evidence in context."""
     evidence = json.dumps(hits, ensure_ascii=False, default=str)
-    return [{"role": "system", "content": f"{SYSTEM}\n\n{EVIDENCE_HEADER}{evidence}"}] \
+    # Keep the invariant instruction in its own leading message.  DeepSeek prompt
+    # caching is prefix-based, so dynamic retrieval evidence must follow it.
+    return [{"role": "system", "content": SYSTEM},
+            {"role": "system", "content": f"{EVIDENCE_HEADER}{evidence}"}] \
            + (history or []) + [{"role": "user", "content": question}]
 
 
