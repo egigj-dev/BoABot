@@ -25,7 +25,6 @@ ALL_SETS = [
     ("eval_generated.jsonl", "generated"),
     ("eval_handwritten.jsonl", "handwritten"),
 ]
-FAQ_SET = ("eval_faq.jsonl", "FAQ")
 KS = (1, 3, 5, 10)
 
 # Load rate chunks for bank-name verification
@@ -181,33 +180,6 @@ def _score(entries: list[dict]) -> dict:
     }
 
 
-def _score_faq(entries: list[dict]) -> dict:
-    """Score FAQ source-URL recall; this set has no chunk gold IDs."""
-    hit_at = {k: 0 for k in (1, 5, 10)}
-    for entry in entries:
-        hits = retrieve(entry["question"], k=10)
-        gold_url = entry["url"].rstrip("/")
-        rank = next((index for index, hit in enumerate(hits, 1)
-                     if str(hit.get("url") or "").rstrip("/") == gold_url), None)
-        for k in hit_at:
-            if rank and rank <= k:
-                hit_at[k] += 1
-    return {"n": len(entries), "hit_at": hit_at}
-
-
-def _fmt_faq(path: str, scores: dict) -> None:
-    print("\n--- FAQ recall (exact source URL) ---")
-    if not scores:
-        print("No FAQ data to report.")
-        return
-    n = scores["n"]
-    values = "  ".join(
-        f"R@{k}={scores['hit_at'][k]}/{n} ({scores['hit_at'][k] / n:.3f})"
-        for k in (1, 5, 10)
-    )
-    print(f"  {path}: {values}")
-
-
 def _fmt(scores: list[tuple[str, str, dict]]) -> None:
     """Print a comparison table."""
     if not scores:
@@ -297,9 +269,8 @@ def main() -> None:
     print("--- Retrieval recall ---")
     _fmt(scores)
 
-    faq_path, _faq_label = FAQ_SET
-    faq_entries = _load_set(faq_path)
-    _fmt_faq(faq_path, _score_faq(faq_entries) if faq_entries else {})
+    print("\nFAQ evaluation skipped: Bank of Albania FAQ pages from eval_faq.jsonl "
+          "are not indexed in the retrieval corpus.")
 
     # Print recall breakdown by prefix in a compact form
     print("\n--- Recall breakdown by prefix ---")
