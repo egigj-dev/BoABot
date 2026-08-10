@@ -10,13 +10,19 @@ from trust import (BUSINESS_DEPOSIT_MESSAGE, NO_EVIDENCE_MESSAGE, input_gate,
                    is_business_deposit_question, trusted_hits)
 
 API = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "deepseek/deepseek-v4-flash"
-KEY = os.environ["DEEPSEEK_API_KEY"]
+MODEL = os.environ.get("BOABOT_MODEL", "google/gemini-3.1-flash-lite")
 MAX_QUERY_CHARS = 1_500
 
 
 class RAGError(RuntimeError):
     """A recoverable error while talking to the model or processing its tool call."""
+
+
+def api_key():
+    key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
+    if not key:
+        raise RAGError("OPENROUTER_API_KEY or DEEPSEEK_API_KEY is required")
+    return key
 
 
 SYSTEM = (
@@ -46,7 +52,7 @@ _DOMAIN_ANCHORS = ("bank", "kart", "kapital", "komision", "kredi", "licenc",
 
 def _post(payload):
     try:
-        response = requests.post(API, headers={"Authorization": f"Bearer {KEY}"},
+        response = requests.post(API, headers={"Authorization": f"Bearer {api_key()}"},
                                  json=payload, timeout=90)
         response.raise_for_status()
         return response.json()
@@ -63,25 +69,6 @@ def completion_message(response):
     if not isinstance(message, dict):
         raise RAGError("Model provider returned an invalid message")
     return message
-
-
-def tool_query(tool_call):
-    """Validate a model tool call before it reaches retrieval or the database."""
-    try:
-        function = tool_call["function"]
-        if function["name"] != "retrieve":
-            raise ValueError("unknown tool")
-        arguments = json.loads(function["arguments"])
-        query = arguments["query"]
-    except (KeyError, TypeError, json.JSONDecodeError, ValueError) as exc:
-        raise RAGError("Model requested an invalid retrieval call") from exc
-
-    if not isinstance(query, str):
-        raise RAGError("Model requested a non-text retrieval query")
-    query = query.strip()
-    if not query or len(query) > MAX_QUERY_CHARS:
-        raise RAGError("Model requested an invalid-length retrieval query")
-    return query
 
 
 def rewrite(question, history):

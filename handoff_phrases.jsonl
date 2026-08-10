@@ -1,0 +1,332 @@
+{"text":"Kam humbur kartën","intent":"lost_card","expected":"handoff"}
+{"text":"Kam humbur karten","intent":"lost_card","expected":"handoff"}
+{"text":"Më ka humbur karta","intent":"lost_card","expected":"handoff"}
+{"text":"Me ka humbur karta","intent":"lost_card","expected":"handoff"}
+{"text":"Nuk po e gjej kartën time","intent":"lost_card","expected":"handoff"}
+{"text":"Nuk po e gjej karten time","intent":"lost_card","expected":"handoff"}
+{"text":"E kam lënë diku kartën","intent":"lost_card","expected":"handoff"}
+{"text":"E kam lene diku karten","intent":"lost_card","expected":"handoff"}
+{"text":"Më është zhdukur karta","intent":"lost_card","expected":"handoff"}
+{"text":"Me eshte zhdukur karta","intent":"lost_card","expected":"handoff"}
+{"text":"Karta ime është e humbur","intent":"lost_card","expected":"handoff"}
+{"text":"Karta ime eshte e humbur","intent":"lost_card","expected":"handoff"}
+{"text":"Kartën e kam humbur rrugës","intent":"lost_card","expected":"handoff"}
+{"text":"Karten e kam humbur rruges","intent":"lost_card","expected":"handoff"}
+{"text":"Nuk e di ku më ka rënë karta","intent":"lost_card","expected":"handoff"}
+{"text":"Nuk e di ku me ka rene karta","intent":"lost_card","expected":"handoff"}
+{"text":"Më humbi karta dje","intent":"lost_card","expected":"handoff"}
+{"text":"Me humbi karta dje","intent":"lost_card","expected":"handoff"}
+{"text":"Ma mori era portofolin, karta s'është","intent":"lost_card","expected":"handoff"}
+{"text":"Karta më ka mbetur diku","intent":"lost_card","expected":"handoff"}
+{"text":"Karta me ka mbetur diku","intent":"lost_card","expected":"handoff"}
+{"text":"Dua të raportoj kartë të humbur","intent":"lost_card","expected":"handoff"}
+{"text":"Dua te raportoj karte te humbur","intent":"lost_card","expected":"handoff"}
+{"text":"Si mund ta raportoj se humba kartën?","intent":"lost_card","expected":"handoff"}
+{"text":"Si mund ta raportoj se humba karten?","intent":"lost_card","expected":"handoff"}
+{"text":"A mundeni të më ndihmoni, më humbi karta?","intent":"lost_card","expected":"handoff"}
+{"text":"A mundeni te me ndihmoni, me humbi karta?","intent":"lost_card","expected":"handoff"}
+{"text":"Dua të bisedoj për kartën që kam humbur","intent":"lost_card","expected":"handoff"}
+{"text":"Kam ngatërruar vendin e kartës","intent":"lost_card","expected":"handoff"}
+{"text":"Kam ngaterruar vendin e kartes","intent":"lost_card","expected":"handoff"}
+{"text":"S'po e gjej dot kartën","intent":"lost_card","expected":"handoff"}
+{"text":"Spo e gjej dot karten","intent":"lost_card","expected":"handoff"}
+{"text":"Karta ime... nuk e gjej","intent":"lost_card","expected":"handoff"}
+{"text":"Karta ime... nuk e gjej","intent":"lost_card","expected":"handoff"}
+{"text":"Më ka ikur karta nga portofoli","intent":"lost_card","expected":"handoff"}
+{"text":"Me ka ikur karta nga portofoli","intent":"lost_card","expected":"handoff"}
+{"text":"Kartën e lashë në taksi","intent":"lost_card","expected":"handoff"}
+{"text":"Karten e lashe ne taksi","intent":"lost_card","expected":"handoff"}
+{"text":"Besoj se e kam humbur debit kartën","intent":"lost_card","expected":"handoff"}
+{"text":"Besoj se e kam humbur debit karten","intent":"lost_card","expected":"handoff"}
+{"text":"Më humbi kartela e bankës","intent":"lost_card","expected":"handoff"}
+{"text":"Me humbi kartela e bankes","intent":"lost_card","expected":"handoff"}
+{"text":"Kartela është humbur","intent":"lost_card","expected":"handoff"}
+{"text":"Kartela eshte humbur","intent":"lost_card","expected":"handoff"}
+{"text":"E paskam lënë kartën në punë","intent":"lost_card","expected":"handoff"}
+{"text":"E paskam lene karten ne pune","intent":"lost_card","expected":"handoff"}
+{"text":"Ku raportohen kartat e humbura?","intent":"lost_card","expected":"handoff"}
+{"text":"Ku raportohen kartat e humbura?","intent":"lost_card","expected":"handoff"}
+{"text":"Nuk kam më kartën me vete","intent":"lost_card","expected":"handoff"}
+{"text":"Nuk kam me karten me vete","intent":"lost_card","expected":"handoff"}
+{"text":"Karta u humb në udhëtim","intent":"lost_card","expected":"handoff"}
+{"text":"Karta u humb ne udhetim","intent":"lost_card","expected":"handoff"}
+{"text":"Ma kanë vjedhur kartën","intent":"stolen_card","expected":"handoff"}
+{"text":"Ma kane vjedhur karten","intent":"stolen_card","expected":"handoff"}
+{"text":"Më vodhën kartën","intent":"stolen_card","expected":"handoff"}
+{"text":"Me vodhen karten","intent":"stolen_card","expected":"handoff"}
+{"text":"Dikush ma ka marrë kartën","intent":"stolen_card","expected":"handoff"}
+{"text":"Dikush ma ka marre karten","intent":"stolen_card","expected":"handoff"}
+{"text":"Karta ime është vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"Karta ime eshte vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"Më kanë marrë portofolin me kartë brenda","intent":"stolen_card","expected":"handoff"}
+{"text":"Me kane marre portofolin me karte brenda","intent":"stolen_card","expected":"handoff"}
+{"text":"Më grabitën dhe më morën kartën","intent":"stolen_card","expected":"handoff"}
+{"text":"Me grabiten dhe me moren karten","intent":"stolen_card","expected":"handoff"}
+{"text":"Ma vodhën debit kartën","intent":"stolen_card","expected":"handoff"}
+{"text":"Ma vodhen debit karten","intent":"stolen_card","expected":"handoff"}
+{"text":"Kartela më është marrë","intent":"stolen_card","expected":"handoff"}
+{"text":"Kartela me eshte marre","intent":"stolen_card","expected":"handoff"}
+{"text":"Më kanë vjedhur kartelën e bankës","intent":"stolen_card","expected":"handoff"}
+{"text":"Me kane vjedhur kartelen e bankes","intent":"stolen_card","expected":"handoff"}
+{"text":"Dua të njoftoj për kartë të vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"Dua te njoftoj per karte te vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"Si ta raportoj që ma vodhën kartën?","intent":"stolen_card","expected":"handoff"}
+{"text":"Si ta raportoj qe ma vodhen karten?","intent":"stolen_card","expected":"handoff"}
+{"text":"A mundeni të më lidhni, karta m'u vodh?","intent":"stolen_card","expected":"handoff"}
+{"text":"A mundeni te me lidhni, karta mu vodh?","intent":"stolen_card","expected":"handoff"}
+{"text":"Ka ndodhur vjedhje e kartës sime","intent":"stolen_card","expected":"handoff"}
+{"text":"Ka ndodhur vjedhje e kartes sime","intent":"stolen_card","expected":"handoff"}
+{"text":"Kartën ma morën nga çanta","intent":"stolen_card","expected":"handoff"}
+{"text":"Karten ma moren nga canta","intent":"stolen_card","expected":"handoff"}
+{"text":"Më pickuan kartën në autobus","intent":"stolen_card","expected":"handoff"}
+{"text":"Me pickuan karten ne autobus","intent":"stolen_card","expected":"handoff"}
+{"text":"Më kanë marrë kartën nga xhepi","intent":"stolen_card","expected":"handoff"}
+{"text":"Me kane marre karten nga xhepi","intent":"stolen_card","expected":"handoff"}
+{"text":"Karta ime... ma kanë vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"Karta ime... ma kane vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"S'e kam më kartën, ma vodhën","intent":"stolen_card","expected":"handoff"}
+{"text":"Se kam me karten, ma vodhen","intent":"stolen_card","expected":"handoff"}
+{"text":"Karta është marrë nga dikush","intent":"stolen_card","expected":"handoff"}
+{"text":"Karta eshte marre nga dikush","intent":"stolen_card","expected":"handoff"}
+{"text":"Më hynë në shtëpi dhe morën kartën","intent":"stolen_card","expected":"handoff"}
+{"text":"Me hyne ne shtepi dhe moren karten","intent":"stolen_card","expected":"handoff"}
+{"text":"Kartela rezulton e vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"Kartela rezulton e vjedhur","intent":"stolen_card","expected":"handoff"}
+{"text":"Dikush ma rrëmbeu kartën","intent":"stolen_card","expected":"handoff"}
+{"text":"Dikush ma rrembeu karten","intent":"stolen_card","expected":"handoff"}
+{"text":"Më vodhën çantën me gjithë kartat","intent":"stolen_card","expected":"handoff"}
+{"text":"Me vodhen canten me gjithe kartat","intent":"stolen_card","expected":"handoff"}
+{"text":"Dua të flas për vjedhjen e kartës","intent":"stolen_card","expected":"handoff"}
+{"text":"Dua te flas per vjedhjen e kartes","intent":"stolen_card","expected":"handoff"}
+{"text":"Kartën ma kanë rrëmbyer","intent":"stolen_card","expected":"handoff"}
+{"text":"Karten ma kane rrembyer","intent":"stolen_card","expected":"handoff"}
+{"text":"Nuk e njoh këtë transaksion","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nuk e njoh kete transaksion","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nuk e kam bërë këtë pagesë","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nuk e kam bere kete pagese","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dikush ka përdorur kartën time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dikush ka perdorur karten time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më janë marrë para nga llogaria","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me jane marre para nga llogaria","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Kam një pagesë që s'e kam bërë unë","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Kam nje pagese qe se kam bere une","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Ka dalje parash që nuk i njoh","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Ka dalje parash qe nuk i njoh","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Llogaria ime është zbrazur","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Llogaria ime eshte zbrazur","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Mungojnë lekë nga llogaria ime","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Mungojne leke nga llogaria ime","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Një blerje e panjohur më doli në kartë","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nje blerje e panjohur me doli ne karte","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Transaksioni nuk është i imi","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Transaksioni nuk eshte i imi","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më debitoni për diçka që s'e bleva","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me debitoni per dicka qe se bleva","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dikush po më tërheq lekët","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dikush po me terheq leket","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më kanë bërë pagesa me kartën","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me kane bere pagesa me karten","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Shoh një transferim që nuk e autorizova","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Shoh nje transferim qe nuk e autorizova","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Kartën ma kanë përdorur pa leje","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Karten ma kane perdorur pa leje","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më është bërë një pagesë e çuditshme","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me eshte bere nje pagese e cuditshme","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dua të kundërshtoj një transaksion","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dua te kundershtoj nje transaksion","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Si mund ta raportoj një pagesë të paautorizuar?","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Si mund ta raportoj nje pagese te paautorizuar?","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"A mundeni të kontrolloni, më mungojnë para?","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"A mundeni te kontrolloni, me mungojne para?","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nuk e njoh një transaksion në llogarinë time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nuk e njoh nje transaksion ne llogarine time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Kush i mori lekët e mia?","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Kush i mori leket e mia?","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më dolën para pa i prekur unë","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me dolen para pa i prekur une","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Një pagesë nga jashtë nuk është e imja","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nje pagese nga jashte nuk eshte e imja","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Karta ime... ka blerje që s'i njoh","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Karta ime... ka blerje qe si njoh","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Transaksion i dyshimtë","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Transaksion i dyshimte","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më vodhën para përmes kartës","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me vodhen para permes kartes","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nuk kam dhënë unë miratim për këtë","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Nuk kam dhene une miratim per kete","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Ka pagesa online që nuk i kam bërë","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Ka pagesa online qe nuk i kam bere","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më shfaqet një tregtar që nuk e njoh","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me shfaqet nje tregtar qe nuk e njoh","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Është tërhequr cash pa dijeninë time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Eshte terhequr cash pa dijenine time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Më kanë hyrë te karta","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Me kane hyre te karta","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Po më ikin lekët nga banka","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Po me ikin leket nga banka","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dyshoj se dikush ka bërë blerje me kartën time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dyshoj se dikush ka bere blerje me karten time","intent":"fraud_unauthorized","expected":"handoff"}
+{"text":"Dua ta bllokoj kartën","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua ta bllokoj karten","intent":"block_freeze","expected":"handoff"}
+{"text":"Bllokojeni kartën time","intent":"block_freeze","expected":"handoff"}
+{"text":"Bllokojeni karten time","intent":"block_freeze","expected":"handoff"}
+{"text":"Më duhet të ngrij kartën","intent":"block_freeze","expected":"handoff"}
+{"text":"Me duhet te ngrij karten","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua të pezulloj llogarinë","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua te pezulloj llogarine","intent":"block_freeze","expected":"handoff"}
+{"text":"Ndalo pagesat nga karta ime","intent":"block_freeze","expected":"handoff"}
+{"text":"Ndalo pagesat nga karta ime","intent":"block_freeze","expected":"handoff"}
+{"text":"Mbylleni kartën","intent":"block_freeze","expected":"handoff"}
+{"text":"Mbylleni karten","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua të çaktivizoj kartën","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua te caktivizoj karten","intent":"block_freeze","expected":"handoff"}
+{"text":"Kartën dua ta vë në bllok","intent":"block_freeze","expected":"handoff"}
+{"text":"Karten dua ta ve ne bllok","intent":"block_freeze","expected":"handoff"}
+{"text":"Llogaria ime duhet ngrirë","intent":"block_freeze","expected":"handoff"}
+{"text":"Llogaria ime duhet ngrire","intent":"block_freeze","expected":"handoff"}
+{"text":"Karta është e bllokuar, dua ta raportoj","intent":"block_freeze","expected":"handoff"}
+{"text":"Karta eshte e bllokuar, dua ta raportoj","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua të anuloj kartën time","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua te anuloj karten time","intent":"block_freeze","expected":"handoff"}
+{"text":"Si mund ta ngrij kartën tani?","intent":"block_freeze","expected":"handoff"}
+{"text":"Si mund ta ngrij karten tani?","intent":"block_freeze","expected":"handoff"}
+{"text":"A mundeni të bllokoni llogarinë?","intent":"block_freeze","expected":"handoff"}
+{"text":"A mundeni te bllokoni llogarine?","intent":"block_freeze","expected":"handoff"}
+{"text":"Ju lutem ndaloni debitimet","intent":"block_freeze","expected":"handoff"}
+{"text":"Ju lutem ndaloni debitimet","intent":"block_freeze","expected":"handoff"}
+{"text":"Bëjeni kartën të papërdorshme","intent":"block_freeze","expected":"handoff"}
+{"text":"Bejeni karten te paperdorshme","intent":"block_freeze","expected":"handoff"}
+{"text":"Mos lejoni më pagesa me kartën time","intent":"block_freeze","expected":"handoff"}
+{"text":"Mos lejoni me pagesa me karten time","intent":"block_freeze","expected":"handoff"}
+{"text":"Karta ime... bllokojeni","intent":"block_freeze","expected":"handoff"}
+{"text":"Karta ime... bllokojeni","intent":"block_freeze","expected":"handoff"}
+{"text":"Ngrirje e kartës","intent":"block_freeze","expected":"handoff"}
+{"text":"Ngrirje e kartes","intent":"block_freeze","expected":"handoff"}
+{"text":"Kam nevojë ta mbyll llogarinë urgjent","intent":"block_freeze","expected":"handoff"}
+{"text":"Kam nevoje ta mbyll llogarine urgjent","intent":"block_freeze","expected":"handoff"}
+{"text":"Bllokim për kartën, ju lutem","intent":"block_freeze","expected":"handoff"}
+{"text":"Bllokim per karten, ju lutem","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua të ndaloj transfertat nga llogaria","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua te ndaloj transfertat nga llogaria","intent":"block_freeze","expected":"handoff"}
+{"text":"Çaktivizojeni kartelën","intent":"block_freeze","expected":"handoff"}
+{"text":"Caktivizojeni kartelen","intent":"block_freeze","expected":"handoff"}
+{"text":"Ta stopoj kartën","intent":"block_freeze","expected":"handoff"}
+{"text":"Ta stopoj karten","intent":"block_freeze","expected":"handoff"}
+{"text":"Kartën ma lini të ngrirë","intent":"block_freeze","expected":"handoff"}
+{"text":"Karten ma lini te ngrire","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua të ndaloj përdorimin e llogarisë","intent":"block_freeze","expected":"handoff"}
+{"text":"Dua te ndaloj perdorimin e llogarise","intent":"block_freeze","expected":"handoff"}
+{"text":"Kodi PIN më është zbuluar","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi PIN me eshte zbuluar","intent":"secret_credential","expected":"handoff"}
+{"text":"Dikush e di PIN-in tim","intent":"secret_credential","expected":"handoff"}
+{"text":"Dikush e di PIN-in tim","intent":"secret_credential","expected":"handoff"}
+{"text":"Kam ndarë fjalëkalimin pa dashje","intent":"secret_credential","expected":"handoff"}
+{"text":"Kam ndare fjalekalimin pa dashje","intent":"secret_credential","expected":"handoff"}
+{"text":"Më kërkuan kodin OTP dhe ua dhashë","intent":"secret_credential","expected":"handoff"}
+{"text":"Me kerkuan kodin OTP dhe ua dhashe","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi i verifikimit më ka dalë te dikush","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi i verifikimit me ka dale te dikush","intent":"secret_credential","expected":"handoff"}
+{"text":"CVV-ja ime është komprometuar","intent":"secret_credential","expected":"handoff"}
+{"text":"CVV-ja ime eshte komprometuar","intent":"secret_credential","expected":"handoff"}
+{"text":"Dikush pa PIN-in e kartës","intent":"secret_credential","expected":"handoff"}
+{"text":"Dikush pa PIN-in e kartes","intent":"secret_credential","expected":"handoff"}
+{"text":"Fjalëkalimi im është zbuluar","intent":"secret_credential","expected":"handoff"}
+{"text":"Fjalekalimi im eshte zbuluar","intent":"secret_credential","expected":"handoff"}
+{"text":"E kam dhënë kodin njëpërdorimësh","intent":"secret_credential","expected":"handoff"}
+{"text":"E kam dhene kodin njeperdoresh","intent":"secret_credential","expected":"handoff"}
+{"text":"Më morën numrin sekret","intent":"secret_credential","expected":"handoff"}
+{"text":"Me moren numrin sekret","intent":"secret_credential","expected":"handoff"}
+{"text":"PIN-i im nuk është më sekret","intent":"secret_credential","expected":"handoff"}
+{"text":"PIN-i im nuk eshte me sekret","intent":"secret_credential","expected":"handoff"}
+{"text":"Dua të raportoj se më dolën të dhënat e kartës","intent":"secret_credential","expected":"handoff"}
+{"text":"Dua te raportoj se me dolen te dhenat e kartes","intent":"secret_credential","expected":"handoff"}
+{"text":"Si mund ta siguroj llogarinë, dikush di fjalëkalimin?","intent":"secret_credential","expected":"handoff"}
+{"text":"Si mund ta siguroj llogarine, dikush di fjalekalimin?","intent":"secret_credential","expected":"handoff"}
+{"text":"A mundeni të më ndihmoni, ia tregova PIN-in dikujt?","intent":"secret_credential","expected":"handoff"}
+{"text":"A mundeni te me ndihmoni, ia tregova PIN-in dikujt?","intent":"secret_credential","expected":"handoff"}
+{"text":"Më telefonuan dhe u thashë kodin","intent":"secret_credential","expected":"handoff"}
+{"text":"Me telefonuan dhe u thashe kodin","intent":"secret_credential","expected":"handoff"}
+{"text":"Kam klikuar link dhe futa fjalëkalimin","intent":"secret_credential","expected":"handoff"}
+{"text":"Kam klikuar link dhe futa fjalekalimin","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi im i sigurisë është vjedhur","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi im i sigurise eshte vjedhur","intent":"secret_credential","expected":"handoff"}
+{"text":"CVV... e ka parë dikush","intent":"secret_credential","expected":"handoff"}
+{"text":"CVV... e ka pare dikush","intent":"secret_credential","expected":"handoff"}
+{"text":"PIN... e dinë të tjerët","intent":"secret_credential","expected":"handoff"}
+{"text":"PIN... e dine te tjeret","intent":"secret_credential","expected":"handoff"}
+{"text":"Më është ekspozuar fjalëkalimi","intent":"secret_credential","expected":"handoff"}
+{"text":"Me eshte ekspozuar fjalekalimi","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi SMS i bankës i shkoi dikujt tjetër","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi SMS i bankes i shkoi dikujt tjeter","intent":"secret_credential","expected":"handoff"}
+{"text":"Dikush më kërkoi numrat e kartës dhe CVV","intent":"secret_credential","expected":"handoff"}
+{"text":"Dikush me kerkoi numrat e kartes dhe CVV","intent":"secret_credential","expected":"handoff"}
+{"text":"Më ra në dorë një mashtrues, i dhashë OTP","intent":"secret_credential","expected":"handoff"}
+{"text":"Me ra ne dore nje mashtrues, i dhashe OTP","intent":"secret_credential","expected":"handoff"}
+{"text":"Llogaria ime mund të jetë komprometuar, doli kodi","intent":"secret_credential","expected":"handoff"}
+{"text":"Llogaria ime mund te jete komprometuar, doli kodi","intent":"secret_credential","expected":"handoff"}
+{"text":"Më panë teksa shkruaja PIN-in","intent":"secret_credential","expected":"handoff"}
+{"text":"Me pane teksa shkruaja PIN-in","intent":"secret_credential","expected":"handoff"}
+{"text":"Fjalëkalimin e kam treguar","intent":"secret_credential","expected":"handoff"}
+{"text":"Fjalekalimin e kam treguar","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi i autorizimit është shpërndarë","intent":"secret_credential","expected":"handoff"}
+{"text":"Kodi i autorizimit eshte shperndare","intent":"secret_credential","expected":"handoff"}
+{"text":"Sa kushton komisioni vjetor i kartës?","intent":"negative","expected":"model"}
+{"text":"Sa kushton komisioni vjetor i kartes?","intent":"negative","expected":"model"}
+{"text":"A ka tarifë për kartë debiti?","intent":"negative","expected":"model"}
+{"text":"A ka tarife per karte debiti?","intent":"negative","expected":"model"}
+{"text":"Cilat janë rregullat për përdorimin e kartës?","intent":"negative","expected":"model"}
+{"text":"Cilat jane rregullat per perdorimin e kartes?","intent":"negative","expected":"model"}
+{"text":"Çfarë ndodh zakonisht kur humbet një kartë?","intent":"negative","expected":"model"}
+{"text":"Cfare ndodh zakonisht kur humbet nje karte?","intent":"negative","expected":"model"}
+{"text":"Si është politika e bankës për kartat e humbura?","intent":"negative","expected":"model"}
+{"text":"Si eshte politika e bankes per kartat e humbura?","intent":"negative","expected":"model"}
+{"text":"A paguhet zëvendësimi i kartës së humbur?","intent":"negative","expected":"model"}
+{"text":"A paguhet zevendesimi i kartes se humbur?","intent":"negative","expected":"model"}
+{"text":"Sa është tarifa për bllokimin e kartës?","intent":"negative","expected":"model"}
+{"text":"Sa eshte tarifa per bllokimin e kartes?","intent":"negative","expected":"model"}
+{"text":"A mund të lexoj rregulloren e kartës?","intent":"negative","expected":"model"}
+{"text":"A mund te lexoj rregulloren e kartes?","intent":"negative","expected":"model"}
+{"text":"Çfarë komisioni mbahet për pagesat me kartë?","intent":"negative","expected":"model"}
+{"text":"Cfare komisioni mbahet per pagesat me karte?","intent":"negative","expected":"model"}
+{"text":"Sa janë interesat e depozitës?","intent":"negative","expected":"model"}
+{"text":"Sa jane interesat e depozites?","intent":"negative","expected":"model"}
+{"text":"Cila depozitë ka normën më të lartë?","intent":"negative","expected":"model"}
+{"text":"Cila depozite ka normen me te larte?","intent":"negative","expected":"model"}
+{"text":"A ka komision për transfertat?","intent":"negative","expected":"model"}
+{"text":"A ka komision per transfertat?","intent":"negative","expected":"model"}
+{"text":"Sa kushton një pagesë online me kartë?","intent":"negative","expected":"model"}
+{"text":"Sa kushton nje pagese online me karte?","intent":"negative","expected":"model"}
+{"text":"Ku i gjej kushtet e llogarisë?","intent":"negative","expected":"model"}
+{"text":"Ku i gjej kushtet e llogarise?","intent":"negative","expected":"model"}
+{"text":"A ka tarifë kur ngrin përkohësisht kartën në aplikacion?","intent":"negative","expected":"model"}
+{"text":"A ka tarife kur ngrin perkohesisht karten ne aplikacion?","intent":"negative","expected":"model"}
+{"text":"Sa ditë zgjat karta e re pas humbjes, sipas rregullores?","intent":"negative","expected":"model"}
+{"text":"Sa dite zgjat karta e re pas humbjes, sipas rregullores?","intent":"negative","expected":"model"}
+{"text":"Cila është procedura e përgjithshme për kartë të vjedhur?","intent":"negative","expected":"model"}
+{"text":"Cila eshte procedura e pergjithshme per karte te vjedhur?","intent":"negative","expected":"model"}
+{"text":"A ndryshon tarifa e kartës sipas llojit?","intent":"negative","expected":"model"}
+{"text":"A ndryshon tarifa e kartes sipas llojit?","intent":"negative","expected":"model"}
+{"text":"Dua informacion për normat e kursimeve","intent":"negative","expected":"model"}
+{"text":"Dua informacion per normat e kursimeve","intent":"negative","expected":"model"}
+{"text":"Sa është komisioni për tërheqje cash?","intent":"negative","expected":"model"}
+{"text":"Sa eshte komisioni per terheqje cash?","intent":"negative","expected":"model"}
+{"text":"A ka pagesë për anulimin e kartës në përgjithësi?","intent":"negative","expected":"model"}
+{"text":"A ka pagese per anulimin e kartes ne pergjithesi?","intent":"negative","expected":"model"}
+{"text":"Ku shpjegohet mbrojtja nga mashtrimet?","intent":"negative","expected":"model"}
+{"text":"Ku shpjegohet mbrojtja nga mashtrimet?","intent":"negative","expected":"model"}
+{"text":"Çfarë duhet të bëjë dikush nëse i del PIN-i?","intent":"negative","expected":"model"}
+{"text":"Cfare duhet te beje dikush nese i del PIN-i?","intent":"negative","expected":"model"}
+{"text":"A mund ta ndryshoj PIN-in në bankomat?","intent":"negative","expected":"model"}
+{"text":"A mund ta ndryshoj PIN-in ne bankomat?","intent":"negative","expected":"model"}
+{"text":"Si funksionon kodi OTP për blerjet online?","intent":"negative","expected":"model"}
+{"text":"Si funksionon kodi OTP per blerjet online?","intent":"negative","expected":"model"}
+{"text":"Çfarë është CVV-ja në kartë?","intent":"negative","expected":"model"}
+{"text":"Cfare eshte CVV-ja ne karte?","intent":"negative","expected":"model"}
+{"text":"A ka tarifë për ndryshimin e fjalëkalimit?","intent":"negative","expected":"model"}
+{"text":"A ka tarife per ndryshimin e fjalekalimit?","intent":"negative","expected":"model"}
+{"text":"Cilat masa sigurie rekomandon banka?","intent":"negative","expected":"model"}
+{"text":"Cilat masa sigurie rekomandon banka?","intent":"negative","expected":"model"}
+{"text":"A duhet ta mbaj PIN-in sekret?","intent":"negative","expected":"model"}
+{"text":"A duhet ta mbaj PIN-in sekret?","intent":"negative","expected":"model"}
+{"text":"A ka komision për mbajtjen e llogarisë?","intent":"negative","expected":"model"}
+{"text":"A ka komision per mbajtjen e llogarise?","intent":"negative","expected":"model"}

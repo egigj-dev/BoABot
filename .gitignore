@@ -1,17 +1,24 @@
-db/pgdata/
-embedded.parquet
-*.jsonl
-
-
- HANDOFF.md
-HANDOFF_updated.md
-PROJECT_SUMMARY.md
+.env
+.venv/
 __pycache__/
+*.pyc
+
+db/pgdata/
+
+# Generated artifacts larger than 5 MB.
+embedded.parquet
+chunks.jsonl
+embedded_old.parquet
+pdf_text.jsonl
+
+# Local backups and notebooks.
 api.py.orig
+callcenter.py.orig
+trust.py.orig
 boa_embed.ipynb
 boa_scraper_v2 (2).ipynb
-callcenter.py.orig
-embedded_old.parquet
-trust.py.orig
 
-.env
+# Superseded local handoff notes.
+HANDOFF.md
+HANDOFF_updated.md
+PROJECT_SUMMARY.md

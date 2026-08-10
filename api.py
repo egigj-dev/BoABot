@@ -2,6 +2,10 @@
 # events: tool, token, error, done
 import json
 import logging
+import math
+import re
+import time
+from contextlib import asynccontextmanager
 from typing import Any
 
 import requests
@@ -10,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from rag import (API, KEY, MODEL, RAGError, grounded_messages, needs_rewrite,
+from rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
 from callcenter import HANDOFF_MESSAGE, Outcome, decide, sessions
 from retrieve import embedding_stats
@@ -18,52 +22,78 @@ from retrieve import shutdown as shutdown_retrieval
 from retrieve import warmup as warmup_retrieval
 from trust import NO_EVIDENCE_MESSAGE
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 logger = logging.getLogger(__name__)
+FIRST_TOKEN_BUDGET_MS = 6000
+_SENTENCE_END_RE = re.compile(r"[.!?][\"'»”\)\]]?(?:\s|$)")
 
 
-@app.on_event("startup")
-def warm_dependencies():
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     warmup_retrieval()
+    try:
+        yield
+    finally:
+        logger.warning("query embedding reuse totals: %s", embedding_stats())
+        shutdown_retrieval()
 
 
-@app.on_event("shutdown")
-def close_dependencies():
-    logger.warning("query embedding reuse totals: %s", embedding_stats())
-    shutdown_retrieval()
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 def sse(obj):
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
-def stream_answer(messages, session_id=None):
+def stream_answer(messages, session_id=None, usage=None):
     """Yield answer tokens and convert upstream protocol failures into RAG errors."""
-    payload = {"model": MODEL, "messages": messages, "stream": True}
+    payload = {"model": MODEL, "messages": messages, "stream": True,
+               "usage": {"include": True}}
     if session_id:
         # OpenRouter uses this as the sticky-routing key, keeping one conversation
         # on a cache-capable provider without changing model selection.
         payload["session_id"] = session_id
+    started = time.perf_counter()
+    content_yielded = False
+    usage = usage if usage is not None else {}
     try:
-        with requests.post(API, headers={"Authorization": f"Bearer {KEY}"},
+        with requests.post(API, headers={"Authorization": f"Bearer {api_key()}"},
                            json=payload,
-                           stream=True, timeout=90) as response:
+                           stream=True, timeout=(5, 10)) as response:
             response.raise_for_status()
             # OpenRouter may omit a charset on SSE responses; default decoding is then ISO-8859-1.
             response.encoding = "utf-8"
             for line in response.iter_lines(decode_unicode=True):
+                # This budget fires when a line arrives, or via the read timeout;
+                # it is not a hard wall-clock cancellation guarantee.
+                if (not content_yielded
+                        and (time.perf_counter() - started) * 1000 > FIRST_TOKEN_BUDGET_MS):
+                    response.close()
+                    raise RAGError("first-token budget exceeded")
                 if not line or not line.startswith("data: "):
                     continue
                 body = line[6:]
                 if body.strip() == "[DONE]":
                     break
                 try:
-                    delta = json.loads(body)["choices"][0]["delta"]
+                    chunk = json.loads(body)
                 except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
                     raise RAGError("Model provider returned an invalid stream") from exc
-                if delta.get("content"):
-                    yield delta["content"]
+                chunk_usage = chunk.get("usage")
+                if isinstance(chunk_usage, dict):
+                    usage.clear()
+                    usage.update(chunk_usage)
+                choices = chunk.get("choices")
+                if not choices and isinstance(chunk_usage, dict):
+                    continue
+                try:
+                    delta = choices[0]["delta"]
+                    content = delta.get("content")
+                except (KeyError, IndexError, TypeError, AttributeError) as exc:
+                    raise RAGError("Model provider returned an invalid stream") from exc
+                if content:
+                    content_yielded = True
+                    yield content
     except requests.RequestException as exc:
         raise RAGError("Model provider stream failed") from exc
 
@@ -271,7 +301,8 @@ class TurnReq(BaseModel):
         return value
 
 
-def turn_done(outcome: Outcome, session_id: str, sources=None, handoff=False, pii_redacted=False):
+def turn_done(outcome: Outcome, session_id: str, sources=None, handoff=False,
+              pii_redacted=False, usage=None):
     return sse({
         "type": "done",
         "outcome": outcome.value,
@@ -279,30 +310,71 @@ def turn_done(outcome: Outcome, session_id: str, sources=None, handoff=False, pi
         "sources": sources or [],
         "handoff": handoff,
         "pii_redacted": pii_redacted,
+        "usage": usage if usage is not None else {},
     })
 
 
 def generate_turn(req: TurnReq):
     """SSE turn contract for web chat today and voice/telephony tomorrow."""
+    started = time.perf_counter()
     session = sessions.get(req.session_id)
-    decision = decide(req.question, session.last_answer, session.history)
-    if decision.outcome:
-        safe_question = decision.question or "[turn i trajtuar nga politika e sigurisë]"
-        sessions.record(session, safe_question, decision.message)
-        yield sse({"type": "token", "text": decision.message})
-        yield turn_done(decision.outcome, session.session_id, handoff=decision.handoff,
-                        pii_redacted=decision.pii_redacted)
-        return
-
+    decision = None
+    outcome = None
+    handoff = False
+    first_sse_ms = None
+    first_token_ms = None
+    first_sentence_ms = None
+    done_ms = None
+    rewrite_used = False
+    embedding_reused = False
+    top_score = None
+    handoff_score = None
+    usage: dict[str, Any] = {}
     sources: dict[str, dict[str, str]] = {}
+    streamed_text = ""
+
+    def emit(event):
+        nonlocal first_sse_ms, first_token_ms, first_sentence_ms, done_ms, streamed_text
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        if first_sse_ms is None:
+            first_sse_ms = elapsed_ms
+        if event.get("type") == "token":
+            if first_token_ms is None:
+                first_token_ms = elapsed_ms
+            streamed_text += str(event.get("text") or "")
+            if first_sentence_ms is None and _SENTENCE_END_RE.search(streamed_text):
+                first_sentence_ms = elapsed_ms
+        elif event.get("type") == "done":
+            done_ms = elapsed_ms
+            if first_sentence_ms is None and streamed_text:
+                first_sentence_ms = elapsed_ms
+        return sse(event)
+
+    def done_event(value, **kwargs):
+        event = json.loads(turn_done(value, session.session_id, usage=usage, **kwargs)[6:])
+        return emit(event)
 
     try:
+        decision = decide(req.question, session.last_answer, session.history)
+        handoff_score = decision.handoff_score
+        if decision.outcome:
+            safe_question = decision.question or "[turn i trajtuar nga politika e sigurisë]"
+            sessions.record(session, safe_question, decision.message)
+            outcome = decision.outcome
+            handoff = decision.handoff
+            yield emit({"type": "token", "text": decision.message})
+            yield done_event(outcome, handoff=handoff,
+                             pii_redacted=decision.pii_redacted)
+            return
+
+        rewrite_used = needs_rewrite(decision.question, session.history)
         standalone_query = rewrite(decision.question, session.history) \
-                           if needs_rewrite(decision.question, session.history) else decision.question
-        yield sse({"type": "tool", "query": standalone_query})
+                           if rewrite_used else decision.question
+        yield emit({"type": "tool", "query": standalone_query})
         byte_identical = standalone_query.encode("utf-8") == decision.question.encode("utf-8")
         if byte_identical:
             assert decision.query_embedding is not None
+        embedding_reused = byte_identical
         query_embedding = decision.query_embedding if byte_identical else None
         hits, refusal = retrieve_evidence(
             standalone_query,
@@ -310,10 +382,13 @@ def generate_turn(req: TurnReq):
             query_embedding=query_embedding,
             embedded_query=decision.question if query_embedding is not None else None,
         )
+        if hits:
+            top_score = float(hits[0]["score"])
         if refusal:
             sessions.record(session, decision.question, refusal)
-            yield sse({"type": "token", "text": refusal})
-            yield turn_done(Outcome.UNSUPPORTED, session.session_id)
+            outcome = Outcome.UNSUPPORTED
+            yield emit({"type": "token", "text": refusal})
+            yield done_event(outcome)
             return
         for hit in hits:
             item = source(hit)
@@ -321,28 +396,59 @@ def generate_turn(req: TurnReq):
         messages = grounded_messages(decision.question, session.history, hits)
 
         answer_parts = []
-        for token in stream_answer(messages, session.session_id):
+        for token in stream_answer(messages, session.session_id, usage):
             answer_parts.append(token)
-            yield sse({"type": "token", "text": token})
+            yield emit({"type": "token", "text": token})
         answer = "".join(answer_parts).strip()
         if not answer:
             answer = NO_EVIDENCE_MESSAGE
             outcome = Outcome.UNSUPPORTED
-            yield sse({"type": "token", "text": answer})
+            yield emit({"type": "token", "text": answer})
         else:
             outcome = Outcome.ANSWER
         sessions.record(session, decision.question, answer)
-        yield turn_done(outcome, session.session_id, list(sources.values()))
+        yield done_event(outcome, sources=list(sources.values()))
     except RAGError:
         logger.exception("Recoverable RAG error while serving /turn")
-        sessions.record(session, decision.question, HANDOFF_MESSAGE)
-        yield sse({"type": "token", "text": HANDOFF_MESSAGE})
-        yield turn_done(Outcome.HANDOFF, session.session_id, handoff=True)
+        question = decision.question if decision and decision.question else req.question
+        sessions.record(session, question, HANDOFF_MESSAGE)
+        outcome = Outcome.HANDOFF
+        handoff = True
+        yield emit({"type": "token", "text": HANDOFF_MESSAGE})
+        yield done_event(outcome, handoff=True)
     except Exception:
         logger.exception("Unexpected error while serving /turn")
-        sessions.record(session, decision.question, HANDOFF_MESSAGE)
-        yield sse({"type": "token", "text": HANDOFF_MESSAGE})
-        yield turn_done(Outcome.HANDOFF, session.session_id, handoff=True)
+        question = decision.question if decision and decision.question else req.question
+        sessions.record(session, question, HANDOFF_MESSAGE)
+        outcome = Outcome.HANDOFF
+        handoff = True
+        yield emit({"type": "token", "text": HANDOFF_MESSAGE})
+        yield done_event(outcome, handoff=True)
+    finally:
+        final_ms = (time.perf_counter() - started) * 1000
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        finite_handoff_score = handoff_score
+        if isinstance(finite_handoff_score, float) and not math.isfinite(finite_handoff_score):
+            finite_handoff_score = None
+        telemetry = {
+            "session_id": session.session_id,
+            "outcome": outcome.value if outcome else Outcome.HANDOFF.value,
+            "handoff": handoff,
+            "model": MODEL,
+            "first_sse_ms": round(first_sse_ms if first_sse_ms is not None else final_ms, 3),
+            "first_token_ms": round(first_token_ms if first_token_ms is not None else final_ms, 3),
+            "first_sentence_ms": round(first_sentence_ms if first_sentence_ms is not None else final_ms, 3),
+            "done_ms": round(done_ms if done_ms is not None else final_ms, 3),
+            "rewrite_used": rewrite_used,
+            "embedding_reused": embedding_reused,
+            "top_score": top_score,
+            "n_sources": len(sources),
+            "handoff_score": finite_handoff_score,
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "cached_tokens": usage.get("cached_tokens", prompt_details.get("cached_tokens", 0)),
+        }
+        logger.info(json.dumps(telemetry, ensure_ascii=False, allow_nan=False))
 
 
 @app.post("/turn")
