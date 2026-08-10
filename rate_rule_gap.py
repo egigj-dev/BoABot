@@ -10,11 +10,15 @@ from trust import BANK_NAMES, PRICE_INTENT, _fold
 
 
 RATE_TERMS = ("komision", "tarif", "norm", "interes", "depozit", "karte")
-EVAL_PATH = Path(__file__).with_name("eval_retrieval.jsonl")
+EVAL_PATH = Path(__file__).with_name("eval_handwritten.jsonl")
 
 
 def inactive_rate_queries() -> list[dict]:
-    rows = [json.loads(line) for line in EVAL_PATH.open(encoding="utf-8")]
+    rows = [
+        row
+        for line in EVAL_PATH.open(encoding="utf-8")
+        if str((row := json.loads(line)).get("gold_id", "")).startswith("rate_")
+    ]
     inactive = []
     for row in rows:
         folded = _fold(row["question"])
