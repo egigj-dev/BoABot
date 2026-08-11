@@ -2,7 +2,13 @@
 .venv/
 __pycache__/
 *.pyc
-
+.pytest_cache/
+.hermes*
+gmp-demo-project-808691649-e6bfe8adf5dc.json
+pipelineA
+pipelineB
+pipelineC
+Shared_RAG_Architecture
 db/pgdata/
 
 # Generated artifacts larger than 5 MB.

@@ -291,6 +291,7 @@ class TurnReq(BaseModel):
 
     question: str = Field(min_length=2, max_length=1_500)
     session_id: str | None = Field(default=None, max_length=128)
+    include_vetted_text: bool = False
 
     @field_validator("question")
     @classmethod
@@ -392,6 +393,10 @@ def generate_turn(req: TurnReq):
             return
         for hit in hits:
             item = source(hit)
+            if req.include_vetted_text:
+                # Passage text is only for an authenticated voice bridge behind
+                # production auth/TLS; default OFF keeps it from public/unaudited consumers.
+                item["passage_text"] = hit["text"]
             sources[item["id"]] = item
         messages = grounded_messages(decision.question, session.history, hits)
 

@@ -1,0 +1,176 @@
+"""HTTP/SSE client for the authoritative ``POST /turn`` contract (Schema 1 §3)."""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+import json
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+import httpx
+
+from .events import TurnDone, TurnRequest
+
+TERMINAL_OUTCOMES = {"answer", "clarify", "unsupported", "handoff", "repeat"}
+EventHandler = Callable[[dict[str, Any]], Awaitable[None] | None]
+
+
+class TurnClientError(RuntimeError):
+    pass
+
+
+class FirstTokenDeadline(TurnClientError):
+    pass
+
+
+class TurnCancelled(TurnClientError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class TurnResult:
+    tokens: tuple[str, ...]
+    done: TurnDone
+    tool_events: tuple[dict[str, Any], ...] = ()
+    # Derived only from optional passage_text fields on cited done.sources.
+    vetted_chunks: tuple[str, ...] = ()
+
+
+class TurnService(Protocol):
+    async def run(self, request: TurnRequest, on_event: EventHandler | None = None) -> TurnResult: ...
+
+    async def cancel(self) -> None: ...
+
+
+async def _notify(handler: EventHandler | None, event: dict[str, Any]) -> None:
+    if handler is None:
+        return
+    result = handler(event)
+    if inspect.isawaitable(result):
+        await result
+
+
+class TurnClient:
+    """Consume tool/token/done events and close the upstream response on cancel."""
+
+    def __init__(self, base_url: str, first_token_budget_ms: int = 6000,
+                 client: httpx.AsyncClient | None = None) -> None:
+        self.url = f"{base_url.rstrip('/')}/turn"
+        self.first_token_budget_s = first_token_budget_ms / 1000
+        self._provided_client = client
+        self._response: httpx.Response | None = None
+        self._owner: asyncio.Task[Any] | None = None
+        self._cancel_requested = False
+
+    async def run(self, request: TurnRequest, on_event: EventHandler | None = None) -> TurnResult:
+        """Run one turn with a true wall-clock deadline until the first token."""
+        try:
+            from httpx_sse import aconnect_sse  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise TurnClientError("httpx-sse is required for TurnClient") from exc
+
+        owned_client = self._provided_client is None
+        client = self._provided_client or httpx.AsyncClient(timeout=None)
+        context: Any = None
+        entered = False
+        self._owner = asyncio.current_task()
+        self._cancel_requested = False
+        started = time.monotonic()
+        tokens: list[str] = []
+        tools: list[dict[str, Any]] = []
+        done: TurnDone | None = None
+        first_token = False
+        try:
+            context = aconnect_sse(client, "POST", self.url, json=request.wire_payload(),
+                                   headers={"Accept": "text/event-stream"})
+            remaining = self.first_token_budget_s - (time.monotonic() - started)
+            if remaining <= 0:
+                raise FirstTokenDeadline("/turn first-token deadline exceeded")
+            try:
+                source = await asyncio.wait_for(context.__aenter__(), timeout=remaining)
+                entered = True
+            except asyncio.TimeoutError as exc:
+                raise FirstTokenDeadline("/turn first-token deadline exceeded") from exc
+            self._response = source.response
+            self._response.raise_for_status()
+            iterator = source.aiter_sse()
+            while done is None:
+                try:
+                    if first_token:
+                        sse_event = await iterator.__anext__()
+                    else:
+                        remaining = self.first_token_budget_s - (time.monotonic() - started)
+                        if remaining <= 0:
+                            raise asyncio.TimeoutError
+                        sse_event = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError as exc:
+                    await self._close_response()
+                    raise FirstTokenDeadline("/turn first-token deadline exceeded") from exc
+                try:
+                    event = json.loads(sse_event.data)
+                except (TypeError, json.JSONDecodeError) as exc:
+                    raise TurnClientError("invalid JSON in /turn SSE stream") from exc
+                if not isinstance(event, dict):
+                    raise TurnClientError("invalid /turn SSE event")
+                event_type = event.get("type")
+                if event_type == "tool":
+                    tools.append(event)
+                    await _notify(on_event, event)
+                elif event_type == "token":
+                    text = event.get("text")
+                    if not isinstance(text, str):
+                        raise TurnClientError("token event missing text")
+                    first_token = True
+                    tokens.append(text)
+                    await _notify(on_event, event)
+                elif event_type == "done":
+                    outcome = event.get("outcome")
+                    session_id = event.get("session_id")
+                    if outcome not in TERMINAL_OUTCOMES or not isinstance(session_id, str) or not session_id:
+                        raise TurnClientError("malformed terminal done event")
+                    raw_sources = event.get("sources") or []
+                    if not isinstance(raw_sources, list) or not all(isinstance(item, dict) for item in raw_sources):
+                        raise TurnClientError("malformed sources in done event")
+                    done = TurnDone(
+                        outcome=outcome, session_id=session_id,
+                        sources=tuple({str(k): str(v) for k, v in item.items()} for item in raw_sources),
+                        handoff=bool(event.get("handoff")),
+                        pii_redacted=bool(event.get("pii_redacted")),
+                        usage=event.get("usage") if isinstance(event.get("usage"), dict) else {},
+                    )
+                    await _notify(on_event, event)
+                elif event_type == "error":
+                    raise TurnClientError(str(event.get("message") or "/turn error event"))
+                else:
+                    raise TurnClientError(f"unexpected /turn event type: {event_type!r}")
+            if done is None:
+                raise TurnClientError("/turn stream ended without terminal done event")
+            vetted_chunks = tuple(source["passage_text"] for source in done.sources
+                                  if source.get("passage_text"))
+            return TurnResult(tuple(tokens), done, tuple(tools), vetted_chunks)
+        except asyncio.CancelledError as exc:
+            if self._cancel_requested:
+                raise TurnCancelled("/turn cancelled") from exc
+            raise
+        finally:
+            if context is not None and entered:
+                await context.__aexit__(None, None, None)
+            self._response = None
+            self._owner = None
+            if owned_client:
+                await client.aclose()
+
+    async def _close_response(self) -> None:
+        if self._response is not None:
+            await self._response.aclose()
+
+    async def cancel(self) -> None:
+        self._cancel_requested = True
+        await self._close_response()
+        if self._owner is not None and self._owner is not asyncio.current_task():
+            self._owner.cancel()

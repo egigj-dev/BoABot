@@ -1,0 +1,15 @@
+# Runtime dependencies
+httpx>=0.28,<1
+httpx-sse>=0.4,<1
+numpy>=1.24
+websockets>=13
+redis>=5  # optional; used only when VOICE_REDIS_URL is configured
+
+# Offline tests
+pytest>=8
+fastapi>=0.115
+
+# Provider SDKs: not needed for offline tests; adapters import these lazily.
+azure-cognitiveservices-speech>=1.40
+google-cloud-speech>=2.29
+google-genai>=1.0
