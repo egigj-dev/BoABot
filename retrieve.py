@@ -1,5 +1,7 @@
 # retrieve.py — the one function everything else calls.
 # Same bge-m3 that produced the index; normalized so <=> is cosine distance.
+# Hybrid-only derived fields expose each retriever's rank/raw score plus the RRF
+# score. They are diagnostic and deliberately absent from the default dense path.
 import logging
 import threading
 
@@ -64,8 +66,16 @@ def shutdown():
         _pool.close()
 
 
-def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None):
-    """Top-k chunks for a query. Returns [{id, doc, article, url, text, score}]."""
+def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None,
+             mode: str = "dense"):
+    """Top-k dense or RRF-hybrid chunks.
+
+    ``dense`` is the unchanged production path. ``hybrid`` is opt-in and returns
+    reciprocal-rank-fusion scores, which are not cosine similarities and must not
+    be passed to the existing relevance gate.
+    """
+    if mode not in {"dense", "hybrid"}:
+        raise ValueError(f"unsupported retrieval mode: {mode!r}")
     reused = query_embedding is not None
     if reused:
         v = np.asarray(query_embedding, dtype=np.float32)
@@ -76,10 +86,67 @@ def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None):
     sql = """SELECT id, doc, article, url, text, 1 - (embedding <=> %s::vector) AS score
              FROM chunks WHERE status = ANY(%s)
              ORDER BY embedding <=> %s::vector LIMIT %s"""
+    if mode == "dense":
+        with pool().connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, (vs, list(statuses), vs, k))
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    # PostgreSQL has no Albanian text-search configuration. The additive index
+    # deliberately uses `simple`: useful for exact lexical evidence, but without
+    # Albanian stemming. Query lexemes are ORed so question wording absent from a
+    # passage cannot suppress all lexical candidates.
+    lexical_sql = """WITH query AS (
+                       SELECT to_tsquery(
+                           'simple',
+                           array_to_string(
+                               tsvector_to_array(to_tsvector('simple', %s)), ' | '
+                           )
+                       ) AS terms
+                     )
+                     SELECT id, doc, article, url, text,
+                            ts_rank_cd(text_search, query.terms) AS lexical_score
+                     FROM chunks, query
+                     WHERE status = ANY(%s) AND text_search @@ query.terms
+                     ORDER BY lexical_score DESC, id ASC LIMIT %s"""
     with pool().connection() as conn, conn.cursor() as cur:
         cur.execute(sql, (vs, list(statuses), vs, k))
         cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+        dense_hits = [dict(zip(cols, r)) for r in cur.fetchall()]
+        cur.execute(lexical_sql, (query, list(statuses), k))
+        cols = [d[0] for d in cur.description]
+        lexical_hits = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    by_id = {hit["id"]: dict(hit) for hit in dense_hits}
+    for hit in lexical_hits:
+        by_id.setdefault(hit["id"], dict(hit))
+    dense_ranks = {hit["id"]: rank for rank, hit in enumerate(dense_hits, 1)}
+    lexical_ranks = {hit["id"]: rank for rank, hit in enumerate(lexical_hits, 1)}
+    lexical_scores = {hit["id"]: hit["lexical_score"] for hit in lexical_hits}
+    fused = []
+    for chunk_id, hit in by_id.items():
+        dense_rank = dense_ranks.get(chunk_id)
+        lexical_rank = lexical_ranks.get(chunk_id)
+        hit["dense_score"] = hit.pop("score", None)
+        hit["lexical_score"] = lexical_scores.get(chunk_id)
+        hit["dense_rank"] = dense_rank
+        hit["lexical_rank"] = lexical_rank
+        hit["score"] = sum(
+            1.0 / (60 + rank)
+            for rank in (dense_rank, lexical_rank)
+            if rank is not None
+        )
+        fused.append(hit)
+    return sorted(
+        fused,
+        key=lambda hit: (
+            -hit["score"],
+            hit["dense_rank"] is None,
+            hit["dense_rank"] if hit["dense_rank"] is not None else k + 1,
+            hit["lexical_rank"] if hit["lexical_rank"] is not None else k + 1,
+            hit["id"],
+        ),
+    )[:k]
 
 if __name__ == "__main__":
     import time
