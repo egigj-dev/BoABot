@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 CURRENCY_RE = r"(?:ALL|EUR|USD|lek(?:ë|e)?|euro|dollar(?:ë|e)?)"
-NUMBER_RE = r"\d{1,3}(?:[ .]\d{3})*(?:[,.]\d+)?|\d+(?:[,.]\d+)?"
+NUMBER_RE = r"\d{1,3}(?:[ .]\d{3})+(?:[,.]\d+)?|\d+(?:[,.]\d+)?"
 VALUE_RE = re.compile(rf"(?P<value>{NUMBER_RE})\s*(?P<unit>%|{CURRENCY_RE})?", re.IGNORECASE)
 BANK_RE = re.compile(r"\b(?:Banka|Bankën|Bankës)\s+[A-ZËÇ][\wËÇëç.-]*(?:\s+[A-ZËÇ][\wËÇëç.-]*){0,5}")
 DOCUMENT_RE = re.compile(r"\b(?:Rregullor(?:ja|es)|Ligj(?:i|it)|Udhëzim(?:i|it)|Regjistri)\s+(?:i\s+|e\s+)?[A-ZËÇ][\wËÇëç-]*(?:\s+[\wËÇëç-]+){0,5}")
@@ -32,6 +32,13 @@ def _number(value: str) -> Decimal:
         compact = compact.replace(thousands, "").replace(decimal_mark, ".")
     elif "," in compact:
         compact = compact.replace(",", ".")
+    elif "." in compact:
+        groups = compact.split(".")
+        # Albanian source tables use a decimal comma and a dot as the thousands
+        # separator. Preserve ordinary 4.75-style provider output, but interpret
+        # 10.000 and 1.000.000 using the corpus locale rather than as 10 and 1.
+        if len(groups) > 1 and all(len(group) == 3 for group in groups[1:]):
+            compact = "".join(groups)
     return Decimal(compact)
 
 
@@ -96,9 +103,7 @@ class FidelityGuard:
                 for evidence in chunk_claims:
                     same_unit = claim.unit == evidence.unit or "number" in {claim.unit, evidence.unit}
                     evidence_label_tokens = set(evidence.label.split()) - LABEL_STOPWORDS
-                    label_compatible = (sentence_label_tokens == evidence_label_tokens
-                                        if sentence_label_tokens and evidence_label_tokens
-                                        else sentence_label_tokens == evidence_label_tokens)
+                    label_compatible = sentence_label_tokens <= evidence_label_tokens
                     if claim.value == evidence.value and same_unit and label_compatible:
                         compatible = True
                         break
