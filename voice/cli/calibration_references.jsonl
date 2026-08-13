@@ -1,0 +1,8 @@
+{"audio":"credins/credins_fixture.wav","reference_text":"Sa është komisioni për shlyerje të parakohshme të kredisë në Banka Credins?"}
+{"audio":"boabot_asr_fixtures/fixture1.wav","reference_text":"Sa eshte norma e interesit te depozitave me afat ne Banken OTP?"}
+{"audio":"boabot_asr_fixtures/fixture2.wav","reference_text":"Komisioni i administrimit vjetor eshte 10 euro."}
+{"audio":"boabot_asr_fixtures/fixture3.wav","reference_text":"Norma e interesit per kredine hipotekare eshte 4.75 per qind."}
+{"audio":"boabot_asr_fixtures/fixture4.wav","reference_text":"Banka e Shqiperise ka publikuar normat e interesit per depozitat ne euro."}
+{"audio":"live1/fixture.wav","reference_text":"Cili komision?"}
+{"audio":"live_batch/01-komision.wav","reference_text":"Cili komision?"}
+{"audio":"live_batch/02-banka.wav","reference_text":"Cila bankë?"}
