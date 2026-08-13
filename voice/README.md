@@ -24,25 +24,28 @@ From the repository root:
 
 The Schema 1 demo runs fake microphone frames through fake streaming ASR, a
 deterministic `/turn` service double, the real confidence/sentence/fidelity and
-correlation gates, fake TTS, and an audited output sink. Schema 2 injects a
-malicious native Live answer and demonstrates that its bytes are counted and
-dropped before sending a separate `/turn`-authorized sentence through the
-correlated Azure-fallback path. The bake-off prints a stable Azure/Chirp table
-skeleton when real providers are unconfigured.
+correlation gates, fake TTS, and an audited output sink. Schema 2 runs an
+input-only Gemini Live transcription stand-in, measures final-transcript to
+first-approved-sentence to first-audio latency, and injects a malicious native
+Live answer to demonstrate that its bytes are counted and dropped. The bake-off
+prints a stable Azure/Chirp table skeleton when real providers are unconfigured.
 
 ## Trust path and vetted evidence
 
 The production path is:
 
 ```text
-final transcript -> HTTP POST /turn -> token sentences -> fidelity guard -> TTS
+final transcript -> HTTP POST /turn -> server-approved sentence -> streaming TTS
                                `-----> done.handoff -> call control
 ```
 
 `TurnClient` sends the current `api.py:TurnReq` fields (`question`, `session_id`,
-and `include_vetted_text=True`) and parses its `tool`, `token`, and terminal
-`done` data events. It sets `Accept: text/event-stream`, requires one of the five
-terminal outcomes, closes the response on cancellation, and applies a true
+and `include_vetted_text=True`) and parses its `tool`, `token`,
+`approved_sentence`, and terminal `done` data events. The server emits an
+`approved_sentence` only after a complete sentence passes its evidence-fidelity
+gate, allowing TTS to start while `/turn` is still streaming. The client sets
+`Accept: text/event-stream`, requires one of the five terminal outcomes, closes
+the precisely correlated response on cancellation, and applies a true
 wall-clock first-token deadline even if no SSE line arrives.
 
 The opt-in `include_vetted_text` extension adds `passage_text` to each cited
@@ -90,9 +93,10 @@ server extension can later accept the diagnostics without weakening this rule.
   and native-answer-drop counters; optional caller-supplied Redis publisher.
 - `schema1.py`: modular VAD/ASR -> `/turn` -> verified TTS orchestration and a
   discard-only speculative warmer stub that issues no requests.
-- `schema2.py`: constrained Gemini Live transport, unconditional native-response
-  sink, deterministic Azure fallback policy, and correlated output gate. Live
-  state is transport-only; BoABot `session_id` remains authoritative.
+- `schema2.py`: input-only Gemini Live transcription transport, unconditional
+  native-response sink, streaming Azure rendering, per-utterance milestone
+  latency, and a correlated output gate. Live state is transport-only; BoABot
+  `session_id` remains authoritative.
 - `cli/`: two offline traces and the recorded-audio bake-off scaffold.
 - `tests/`: fast offline smoke and trust-invariant coverage.
 

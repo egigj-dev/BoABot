@@ -50,8 +50,9 @@ class BargeInCoordinator:
         await _maybe_await(self.playback.stop())
         for buffer in self.buffers:
             await _maybe_await(buffer.clear())
-        await self.turn_client.cancel()
-        await self.tts.cancel(current.turn_id)
+        await self.turn_client.cancel(call_id)
+        for render_request_id in self.registry.active_render_ids(call_id):
+            await self.tts.cancel(render_request_id)
         self.registry.invalidate_generation(call_id)
         self.records.append(record)
         return record

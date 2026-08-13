@@ -14,7 +14,7 @@ class FakeTTS(TTS):
     def __init__(self, chunk_size: int = 32, delay_ms: float = 0) -> None:
         self.chunk_size = chunk_size
         self.delay_s = delay_ms / 1000
-        self.cancelled: set[TurnId] = set()
+        self.cancelled: set[str] = set()
         self.approved_inputs: list[str] = []
 
     async def _synthesize(self, approved_text: str, turn_id: TurnId,
@@ -24,7 +24,7 @@ class FakeTTS(TTS):
         payload = approved_text.encode("utf-8")
         started = time.monotonic()
         for offset in range(0, len(payload), self.chunk_size):
-            if turn_id in self.cancelled:
+            if render_request_id in self.cancelled:
                 return
             if self.delay_s:
                 await asyncio.sleep(self.delay_s)
@@ -39,5 +39,5 @@ class FakeTTS(TTS):
                    render_request_id: str) -> AsyncIterator[AudioChunk]:
         return self._synthesize(approved_text, turn_id, generation_id, render_request_id)
 
-    async def cancel(self, turn_id: TurnId) -> None:
-        self.cancelled.add(turn_id)
+    async def cancel(self, render_request_id: str) -> None:
+        self.cancelled.add(render_request_id)

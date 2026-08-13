@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import re
 import uuid
 from collections.abc import AsyncIterable, Awaitable, Callable
@@ -169,17 +171,61 @@ class Schema1Orchestrator:
         turn_id, generation_id = self.registry.next_turn(call_id)
         current = self.registry.require(call_id)
         decision = self.confidence.effective(transcript)
-        request = TurnRequest(transcript.text.strip(),
-                              None if current.session_id.startswith("pending:") else current.session_id,
-                              turn_id)
-        result = await self.turn_client.run(request)
+        request = TurnRequest(
+            transcript.text.strip(),
+            None if current.session_id.startswith("pending:") else current.session_id,
+            turn_id,
+            correlation_key=call_id,
+        )
+        audit = Schema1TurnAudit(call_id, int(turn_id), decision.action.value, "pending")
+        sentence_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        stream_during_turn = decision.action is ConfidenceAction.PROCEED
+
+        async def on_event(event: dict[str, object]) -> None:
+            if event.get("type") == "approved_sentence" and stream_during_turn:
+                text = event.get("text")
+                if isinstance(text, str) and text.strip():
+                    await sentence_queue.put(text.strip())
+
+        async def render_stream() -> None:
+            while True:
+                sentence = await sentence_queue.get()
+                if sentence is None:
+                    return
+                await self._render_sentence(
+                    call_id, turn_id, generation_id, sentence, audit,
+                )
+
+        renderer_task = (
+            asyncio.create_task(render_stream()) if stream_during_turn else None
+        )
+        try:
+            result = await self.turn_client.run(request, on_event)
+        except BaseException:
+            if renderer_task is not None:
+                for request_id in self.registry.active_render_ids(call_id):
+                    await self.tts.cancel(request_id)
+                renderer_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await renderer_task
+            raise
+
         self.registry.update_session(call_id, result.done.session_id)
         self.metrics.outcome(result.done.outcome, result.done.handoff)
-        audit = Schema1TurnAudit(call_id, int(turn_id), decision.action.value, result.done.outcome)
+        audit.server_outcome = result.done.outcome
 
-        # The current TurnReq cannot carry confidence diagnostics. We still call
-        # the real service for every final, then fail closed unless its structured
-        # outcome is at least as restrictive as the calibrated local gate.
+        if renderer_task is not None:
+            await sentence_queue.put(None)
+            try:
+                await renderer_task
+            except Exception as exc:
+                audit.fidelity_failure = f"TTS stream failed: {exc}"
+                await self._handoff(call_id, audit, "TTS stream failure")
+                return audit
+
+        # The current TurnReq cannot carry confidence diagnostics. Every final
+        # still reaches /turn, but low-confidence audio is spoken only when its
+        # structured outcome is at least as restrictive as the local policy.
         allowed = self._server_authorizes_policy(decision, result)
         self.confidence.record(decision, result.done.outcome)
         if not allowed:
@@ -188,35 +234,55 @@ class Schema1Orchestrator:
         if result.done.handoff:
             await self._handoff(call_id, audit, "done.handoff")
 
-        sentences = SentenceBuffer()
-        released: list[str] = []
-        for token in result.tokens:
-            released.extend(sentences.feed_event({"type": "token", "text": token}))
-        released.extend(sentences.finish())
-        for sentence in released:
-            verdict = self.fidelity_guard.verify_sources(sentence, result.done.sources)
-            if not verdict.approved:
-                audit.fidelity_failure = verdict.reason
-                await self.turn_client.cancel()
-                await self._handoff(call_id, audit, "fidelity guard")
-                return audit
-            request_id = uuid.uuid4().hex
-            self.registry.register_render(call_id, turn_id, request_id, generation_id)
-            audit.authorized_text.append(sentence)
-            self._playing = True
-            try:
-                async for chunk in self.tts.synthesize(sentence, turn_id, generation_id, request_id):
-                    try:
-                        self.registry.validate(call_id, chunk.turn_id, chunk.generation_id,
-                                               chunk.render_request_id)
-                    except CorrelationError:
-                        self.metrics.increment("stale_audio_frames")
-                        continue
-                    await self.audio_sink(chunk)
-                    audit.rendered_bytes += len(chunk.data)
-            finally:
-                self._playing = False
+        if renderer_task is None:
+            released = list(result.approved_sentences)
+            if not released:
+                # Backward-compatible fail-closed path for an older /turn server.
+                sentences = SentenceBuffer()
+                for token in result.tokens:
+                    released.extend(sentences.feed_event({"type": "token", "text": token}))
+                released.extend(sentences.finish())
+                for sentence in released:
+                    verdict = self.fidelity_guard.verify_sources(sentence, result.done.sources)
+                    if not verdict.approved:
+                        audit.fidelity_failure = verdict.reason
+                        await self.turn_client.cancel(call_id)
+                        await self._handoff(call_id, audit, "fidelity guard")
+                        return audit
+            for sentence in released:
+                await self._render_sentence(
+                    call_id, turn_id, generation_id, sentence, audit,
+                )
         return audit
+
+    async def _render_sentence(self, call_id, turn_id, generation_id,
+                               sentence: str, audit: Schema1TurnAudit) -> None:
+        request_id = uuid.uuid4().hex
+        self.registry.register_render(
+            call_id, turn_id, request_id, generation_id,
+        )
+        audit.authorized_text.append(sentence)
+        self._playing = True
+        emitted_audio = False
+        try:
+            async for chunk in self.tts.synthesize(
+                    sentence, turn_id, generation_id, request_id):
+                try:
+                    self.registry.validate(
+                        call_id, chunk.turn_id, chunk.generation_id,
+                        chunk.render_request_id,
+                    )
+                except CorrelationError:
+                    self.metrics.increment("stale_audio_frames")
+                    continue
+                await self.audio_sink(chunk)
+                emitted_audio = emitted_audio or bool(chunk.data)
+                audit.rendered_bytes += len(chunk.data)
+            if not emitted_audio:
+                raise RuntimeError("TTS returned no audio")
+        finally:
+            self._playing = False
+            self.registry.finish_render(call_id, request_id)
 
     @staticmethod
     def _server_authorizes_policy(decision: ConfidenceDecision, result: TurnResult) -> bool:

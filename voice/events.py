@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, NewType
@@ -49,6 +50,7 @@ class TurnRequest:
     session_id: str | None
     turn_id: TurnId
     include_vetted_text: bool = True
+    correlation_key: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def wire_payload(self) -> dict[str, str | bool | None]:
         """Return the fields accepted by ``api.py:TurnReq``."""

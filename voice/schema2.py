@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import uuid
+import asyncio
 import contextlib
+import time
+import uuid
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol
 
 from .config import VoiceSettings
 from .correlation import CorrelationError, CorrelationRegistry
@@ -21,6 +23,16 @@ from .turn_client import TurnService
 from .tts.base import TTS
 
 AudioSink = Callable[[AudioChunk], Awaitable[None]]
+
+
+def _append_transcript(current: str, update: str) -> str:
+    """Combine either cumulative or delta Live transcription messages."""
+    if not current or update.startswith(current):
+        return update
+    if current.endswith(update):
+        return current
+    separator = "" if current[-1:].isspace() or update[:1].isspace() else " "
+    return f"{current}{separator}{update}"
 
 
 class NativeResponseSink:
@@ -49,12 +61,17 @@ class OutputAudioGate:
         self.active: RenderRequest | None = None
 
     def activate(self, request: RenderRequest) -> None:
+        if self.active is not None:
+            raise CorrelationError("an output render is already active")
         self.registry.register_render(request.call_id, request.turn_id, request.request_id,
                                       request.generation_id)
         self.active = request
 
     def clear(self) -> None:
+        active = self.active
         self.active = None
+        if active is not None:
+            self.registry.finish_render(active.call_id, active.request_id)
 
     async def forward(self, chunk: AudioChunk) -> bool:
         active = self.active
@@ -124,26 +141,31 @@ class GeminiLiveSessionManager:
         if self._session is None:
             await self.connect()
 
+        audio_started_s: float | None = None
+
         async def sender() -> None:
+            nonlocal audio_started_s
+            activity_started = False
             async for frame in audio:
+                if not frame:
+                    continue
+                if audio_started_s is None:
+                    audio_started_s = time.monotonic()
+                if self.use_custom_vad and not activity_started:
+                    await self._session.send_realtime_input(activity_start={})
+                    activity_started = True
                 await self._session.send_realtime_input(
                     audio={"data": frame, "mime_type": "audio/pcm;rate=16000"})
+            if activity_started:
+                await self._session.send_realtime_input(activity_end={})
+            else:
+                await self._session.send_realtime_input(audio_stream_end=True)
 
-        import asyncio
         task = asyncio.create_task(sender())
         pending_transcript = ""
         try:
             async for response in self._session.receive():
                 server = getattr(response, "server_content", None)
-                transcription = getattr(server, "input_transcription", None)
-                if transcription and getattr(transcription, "text", None):
-                    pending_transcript = str(transcription.text)
-                    if not bool(getattr(server, "turn_complete", False)):
-                        yield Transcript(pending_transcript, final=False, provider="gemini_live")
-                if bool(getattr(server, "turn_complete", False)) and pending_transcript:
-                    yield Transcript(pending_transcript, final=True, provider="gemini_live",
-                                     diagnostics={"stable_final": True})
-                    pending_transcript = ""
                 if bool(getattr(server, "interrupted", False)):
                     self.native_sink.metrics.increment("live_interruptions")
                 data = getattr(response, "data", None)
@@ -155,6 +177,28 @@ class GeminiLiveSessionManager:
                 update = getattr(response, "session_resumption_update", None)
                 if update and getattr(update, "new_handle", None):
                     self.resumption_handle = str(update.new_handle)
+                transcription = (
+                    getattr(server, "input_transcription", None)
+                    or getattr(server, "interim_input_transcription", None)
+                )
+                if transcription and getattr(transcription, "text", None):
+                    pending_transcript = _append_transcript(
+                        pending_transcript, str(transcription.text),
+                    )
+                    if not bool(getattr(server, "turn_complete", False)):
+                        yield Transcript(
+                            pending_transcript, final=False, provider="gemini_live",
+                            started_s=audio_started_s,
+                        )
+                if bool(getattr(server, "turn_complete", False)) and pending_transcript:
+                    yield Transcript(
+                        pending_transcript.strip(), final=True, provider="gemini_live",
+                        started_s=audio_started_s, finalized_s=time.monotonic(),
+                        diagnostics={"stable_final": True},
+                    )
+                    pending_transcript = ""
+                    if task.done():
+                        break
         finally:
             if not task.done():
                 task.cancel()
@@ -179,6 +223,19 @@ class Schema2TurnAudit:
     renderer: str = "none"
     handoff_requested: bool = False
     fidelity_failure: str | None = None
+    asr_finalize_to_first_approved_ms: float | None = None
+    first_approved_to_tts_first_byte_ms: float | None = None
+    asr_finalize_to_tts_first_byte_ms: float | None = None
+
+
+class LiveTranscriber(Protocol):
+    """Input-only Live seam used by the real manager and offline PoC."""
+
+    def events(self, audio: AsyncIterable[bytes]) -> AsyncIterator[Transcript]: ...
+
+    async def interrupt(self) -> None: ...
+
+    async def close(self) -> None: ...
 
 
 class ConstrainedLiveBridge:
@@ -200,16 +257,80 @@ class ConstrainedLiveBridge:
         self.confidence_policy = confidence_policy or ConfidencePolicy()
 
     async def handle_final(self, call_id: str, transcript: Transcript) -> Schema2TurnAudit:
-        if not transcript.final:
-            raise ValueError("only finalized Live input transcription may reach /turn")
+        if not transcript.final or not transcript.text.strip():
+            raise ValueError("only non-empty finalized Live input transcription may reach /turn")
+        finalized_s = transcript.finalized_s or time.monotonic()
         turn_id, generation_id = self.registry.next_turn(call_id)
         correlation = self.registry.require(call_id)
         session_id = None if correlation.session_id.startswith("pending:") else correlation.session_id
-        result = await self.turn_client.run(TurnRequest(transcript.text, session_id, turn_id))
+        confidence = self._confidence_decision(transcript)
+        stream_during_turn = confidence.action is ConfidenceAction.PROCEED
+        audit = Schema2TurnAudit("pending")
+        first_approved_s: float | None = None
+        sentence_queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def mark_first_approved() -> None:
+            nonlocal first_approved_s
+            if first_approved_s is not None:
+                return
+            first_approved_s = time.monotonic()
+            elapsed = (first_approved_s - finalized_s) * 1000
+            audit.asr_finalize_to_first_approved_ms = max(0.0, elapsed)
+            self.metrics.observe(
+                "gemini_live.asr_finalize_to_first_approved", elapsed,
+            )
+
+        async def on_event(event: dict[str, object]) -> None:
+            if event.get("type") != "approved_sentence":
+                return
+            text = event.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return
+            mark_first_approved()
+            if stream_during_turn:
+                await sentence_queue.put(text.strip())
+
+        async def render_stream() -> None:
+            while True:
+                sentence = await sentence_queue.get()
+                if sentence is None:
+                    return
+                await self._render_sentence(
+                    call_id, turn_id, generation_id, sentence, audit,
+                    finalized_s, first_approved_s,
+                )
+
+        renderer_task = (
+            asyncio.create_task(render_stream()) if stream_during_turn else None
+        )
+        request = TurnRequest(
+            transcript.text.strip(), session_id, turn_id, correlation_key=call_id,
+        )
+        try:
+            result = await self.turn_client.run(request, on_event)
+        except BaseException:
+            if renderer_task is not None:
+                for render_id in self.registry.active_render_ids(call_id):
+                    await self.azure_tts.cancel(render_id)
+                renderer_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await renderer_task
+            raise
         self.registry.update_session(call_id, result.done.session_id)
         self.metrics.outcome(result.done.outcome, result.done.handoff)
-        audit = Schema2TurnAudit(result.done.outcome)
-        confidence = self._confidence_decision(transcript)
+        audit.server_outcome = result.done.outcome
+
+        if renderer_task is not None:
+            await sentence_queue.put(None)
+            try:
+                await renderer_task
+            except Exception as exc:
+                audit.fidelity_failure = f"Azure TTS stream failed: {exc}"
+                audit.handoff_requested = True
+                await self.call_control.transfer(call_id, "Azure TTS stream failure")
+                self.output_gate.clear()
+                return audit
+
         if not self._server_authorizes_policy(confidence, result.done.outcome, result.done.handoff):
             audit.handoff_requested = True
             await self.call_control.transfer(call_id, "Live transcript confidence policy")
@@ -218,36 +339,68 @@ class ConstrainedLiveBridge:
             audit.handoff_requested = True
             await self.call_control.transfer(call_id, "done.handoff")
 
-        buffer = SentenceBuffer()
-        sentences: list[str] = []
-        for token in result.tokens:
-            sentences.extend(buffer.feed_event({"type": "token", "text": token}))
-        sentences.extend(buffer.finish())
-        # One renderer is selected for the whole turn to prevent voice changes.
-        renderer = Renderer.LIVE
-        if any(self.renderer_policy.select(sentence) is Renderer.AZURE for sentence in sentences):
-            renderer = Renderer.AZURE
-        if renderer is Renderer.LIVE:
-            # Live literal rendering remains disabled until qualification. This
-            # branch is unreachable with the default fail-closed policy.
-            raise RuntimeError("Live literal rendering is not qualified")
-        audit.renderer = renderer.value
-        for sentence in sentences:
-            verdict = self.fidelity.verify_sources(sentence, result.done.sources)
-            if not verdict.approved:
-                audit.fidelity_failure = verdict.reason
-                audit.handoff_requested = True
-                await self.call_control.transfer(call_id, "fidelity guard")
-                self.output_gate.clear()
-                return audit
-            render_id = uuid.uuid4().hex
-            request = RenderRequest(render_id, call_id, turn_id, generation_id, sentence)
-            self.output_gate.activate(request)
+        if renderer_task is None:
+            sentences = list(result.approved_sentences)
+            if not sentences:
+                # Compatibility with an older /turn: token text is released only
+                # after the post-/turn fidelity guard approves complete sentences.
+                buffer = SentenceBuffer()
+                for token in result.tokens:
+                    sentences.extend(buffer.feed_event({"type": "token", "text": token}))
+                sentences.extend(buffer.finish())
+                for sentence in sentences:
+                    verdict = self.fidelity.verify_sources(sentence, result.done.sources)
+                    if not verdict.approved:
+                        audit.fidelity_failure = verdict.reason
+                        audit.handoff_requested = True
+                        await self.call_control.transfer(call_id, "fidelity guard")
+                        self.output_gate.clear()
+                        return audit
+            for sentence in sentences:
+                mark_first_approved()
+                await self._render_sentence(
+                    call_id, turn_id, generation_id, sentence, audit,
+                    finalized_s, first_approved_s,
+                )
+        return audit
+
+    async def _render_sentence(
+            self, call_id: str, turn_id: Any, generation_id: Any,
+            sentence: str, audit: Schema2TurnAudit, finalized_s: float,
+            first_approved_s: float | None) -> None:
+        if self.renderer_policy.select(sentence) is not Renderer.AZURE:
+            raise RuntimeError("native Live rendering is disabled")
+        audit.renderer = Renderer.AZURE.value
+        render_id = uuid.uuid4().hex
+        request = RenderRequest(render_id, call_id, turn_id, generation_id, sentence)
+        self.output_gate.activate(request)
+        saw_first_byte = audit.asr_finalize_to_tts_first_byte_ms is not None
+        emitted_audio = False
+        try:
             async for chunk in self.azure_tts.synthesize(
                     sentence, turn_id, generation_id, render_id):
+                emitted_audio = emitted_audio or bool(chunk.data)
+                if chunk.data and not saw_first_byte:
+                    saw_first_byte = True
+                    first_audio_s = time.monotonic()
+                    from_final = (first_audio_s - finalized_s) * 1000
+                    audit.asr_finalize_to_tts_first_byte_ms = max(0.0, from_final)
+                    self.metrics.observe(
+                        "gemini_live.asr_finalize_to_tts_first_byte", from_final,
+                    )
+                    if first_approved_s is not None:
+                        from_approved = (first_audio_s - first_approved_s) * 1000
+                        audit.first_approved_to_tts_first_byte_ms = max(0.0, from_approved)
+                        self.metrics.observe(
+                            "gemini_live.first_approved_to_tts_first_byte",
+                            from_approved,
+                        )
                 await self.output_gate.forward(chunk)
+            if not emitted_audio:
+                raise RuntimeError("Azure TTS returned no audio")
             audit.rendered_sentences += 1
-        return audit
+        finally:
+            self.output_gate.clear()
 
     def _confidence_decision(self, transcript: Transcript) -> ConfidenceDecision:
         if transcript.confidence is not None:
@@ -271,8 +424,43 @@ class ConstrainedLiveBridge:
         return outcome == "handoff" and handoff
 
     async def interrupt(self, call_id: str) -> None:
+        render_ids = self.registry.active_render_ids(call_id)
         self.output_gate.clear()
-        current = self.registry.require(call_id)
-        await self.turn_client.cancel()
-        await self.azure_tts.cancel(current.turn_id)
+        self.registry.require(call_id)
+        await self.turn_client.cancel(call_id)
+        for render_request_id in render_ids:
+            await self.azure_tts.cancel(render_request_id)
         self.registry.invalidate_generation(call_id)
+
+
+class GeminiLiveTranscriptionPipeline:
+    """Gemini Live input transcription -> authoritative `/turn` -> Azure TTS."""
+
+    def __init__(self, transcriber: LiveTranscriber,
+                 bridge: ConstrainedLiveBridge) -> None:
+        self.transcriber = transcriber
+        self.bridge = bridge
+
+    async def open_call(self, call_id: str, session_id: str | None = None,
+                        live_session_id: str | None = None) -> None:
+        self.bridge.registry.open_call(
+            call_id, session_id or f"pending:{call_id}", live_session_id,
+        )
+        await self.bridge.call_control.answer(call_id)
+
+    async def run_audio(self, call_id: str,
+                        audio: AsyncIterable[bytes]) -> list[Schema2TurnAudit]:
+        audits: list[Schema2TurnAudit] = []
+        async for transcript in self.transcriber.events(audio):
+            if transcript.final:
+                audits.append(await self.bridge.handle_final(call_id, transcript))
+            else:
+                self.bridge.metrics.increment("gemini_live.partial_transcripts")
+        return audits
+
+    async def interrupt(self, call_id: str) -> None:
+        await self.transcriber.interrupt()
+        await self.bridge.interrupt(call_id)
+
+    async def close(self) -> None:
+        await self.transcriber.close()

@@ -29,6 +29,7 @@ def test_turn_client_parses_exact_sse_contract() -> None:
                 yield _sse({"type": "tool", "query": "telemetry only"})
                 yield _sse({"type": "token", "text": "Përgjigje "})
                 yield _sse({"type": "token", "text": "e aprovuar."})
+                yield _sse({"type": "approved_sentence", "text": "Përgjigje e aprovuar."})
                 yield _sse({"type": "done", "outcome": "answer", "session_id": "s-1",
                             "sources": [{"id": "x", "doc": "Rregullore", "article": "1",
                                          "url": "u", "passage_text": "Norma është 2.5%."}],
@@ -46,7 +47,8 @@ def test_turn_client_parses_exact_sse_contract() -> None:
         assert result.done.sources[0]["id"] == "x"
         assert result.done.sources[0]["passage_text"] == "Norma është 2.5%."
         assert result.vetted_chunks == ("Norma është 2.5%.",)
-        assert seen == ["tool", "token", "token", "done"]
+        assert result.approved_sentences == ("Përgjigje e aprovuar.",)
+        assert seen == ["tool", "token", "token", "approved_sentence", "done"]
 
     asyncio.run(scenario())
 
@@ -106,5 +108,40 @@ def test_turn_client_has_true_first_token_wall_deadline() -> None:
             with pytest.raises(FirstTokenDeadline):
                 await TurnClient("http://test", first_token_budget_ms=10, client=http).run(
                     TurnRequest("pyetje", None, TurnId(1)))
+
+    asyncio.run(scenario())
+
+def test_turn_client_cancels_only_the_requested_concurrent_turn() -> None:
+    async def scenario() -> None:
+        client = TurnClient("http://test")
+        release = asyncio.Event()
+
+        async def owner() -> None:
+            await release.wait()
+
+        first = asyncio.create_task(owner())
+        second = asyncio.create_task(owner())
+
+        class Response:
+            def __init__(self) -> None:
+                self.closed = False
+
+            async def aclose(self) -> None:
+                self.closed = True
+
+        first_response = Response()
+        second_response = Response()
+        client._owners.update({"first": first, "second": second})
+        client._responses.update({"first": first_response, "second": second_response})
+
+        await client.cancel("first")
+        await asyncio.sleep(0)
+        assert first.cancelled()
+        assert first_response.closed
+        assert not second.cancelled()
+        assert not second_response.closed
+
+        release.set()
+        await second
 
     asyncio.run(scenario())

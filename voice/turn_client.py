@@ -37,12 +37,13 @@ class TurnResult:
     tool_events: tuple[dict[str, Any], ...] = ()
     # Derived only from optional passage_text fields on cited done.sources.
     vetted_chunks: tuple[str, ...] = ()
+    approved_sentences: tuple[str, ...] = ()
 
 
 class TurnService(Protocol):
     async def run(self, request: TurnRequest, on_event: EventHandler | None = None) -> TurnResult: ...
 
-    async def cancel(self) -> None: ...
+    async def cancel(self, correlation_key: str | None = None) -> None: ...
 
 
 async def _notify(handler: EventHandler | None, event: dict[str, Any]) -> None:
@@ -61,9 +62,9 @@ class TurnClient:
         self.url = f"{base_url.rstrip('/')}/turn"
         self.first_token_budget_s = first_token_budget_ms / 1000
         self._provided_client = client
-        self._response: httpx.Response | None = None
-        self._owner: asyncio.Task[Any] | None = None
-        self._cancel_requested = False
+        self._responses: dict[str, httpx.Response] = {}
+        self._owners: dict[str, asyncio.Task[Any]] = {}
+        self._cancel_requested: set[str] = set()
 
     async def run(self, request: TurnRequest, on_event: EventHandler | None = None) -> TurnResult:
         """Run one turn with a true wall-clock deadline until the first token."""
@@ -76,11 +77,17 @@ class TurnClient:
         client = self._provided_client or httpx.AsyncClient(timeout=None)
         context: Any = None
         entered = False
-        self._owner = asyncio.current_task()
-        self._cancel_requested = False
+        key = request.correlation_key
+        if key in self._owners:
+            raise TurnClientError(f"turn already active for correlation key {key!r}")
+        owner = asyncio.current_task()
+        assert owner is not None
+        self._owners[key] = owner
+        self._cancel_requested.discard(key)
         started = time.monotonic()
         tokens: list[str] = []
         tools: list[dict[str, Any]] = []
+        approved_sentences: list[str] = []
         done: TurnDone | None = None
         first_token = False
         try:
@@ -94,8 +101,8 @@ class TurnClient:
                 entered = True
             except asyncio.TimeoutError as exc:
                 raise FirstTokenDeadline("/turn first-token deadline exceeded") from exc
-            self._response = source.response
-            self._response.raise_for_status()
+            self._responses[key] = source.response
+            self._responses[key].raise_for_status()
             iterator = source.aiter_sse()
             while done is None:
                 try:
@@ -109,7 +116,7 @@ class TurnClient:
                 except StopAsyncIteration:
                     break
                 except asyncio.TimeoutError as exc:
-                    await self._close_response()
+                    await self._close_response(key)
                     raise FirstTokenDeadline("/turn first-token deadline exceeded") from exc
                 try:
                     event = json.loads(sse_event.data)
@@ -127,6 +134,12 @@ class TurnClient:
                         raise TurnClientError("token event missing text")
                     first_token = True
                     tokens.append(text)
+                    await _notify(on_event, event)
+                elif event_type == "approved_sentence":
+                    text = event.get("text")
+                    if not isinstance(text, str) or not text.strip():
+                        raise TurnClientError("approved_sentence event missing text")
+                    approved_sentences.append(text)
                     await _notify(on_event, event)
                 elif event_type == "done":
                     outcome = event.get("outcome")
@@ -152,25 +165,38 @@ class TurnClient:
                 raise TurnClientError("/turn stream ended without terminal done event")
             vetted_chunks = tuple(source["passage_text"] for source in done.sources
                                   if source.get("passage_text"))
-            return TurnResult(tuple(tokens), done, tuple(tools), vetted_chunks)
+            return TurnResult(
+                tuple(tokens), done, tuple(tools), vetted_chunks,
+                tuple(approved_sentences),
+            )
         except asyncio.CancelledError as exc:
-            if self._cancel_requested:
+            if key in self._cancel_requested:
                 raise TurnCancelled("/turn cancelled") from exc
             raise
         finally:
             if context is not None and entered:
                 await context.__aexit__(None, None, None)
-            self._response = None
-            self._owner = None
+            self._responses.pop(key, None)
+            self._owners.pop(key, None)
+            self._cancel_requested.discard(key)
             if owned_client:
                 await client.aclose()
 
-    async def _close_response(self) -> None:
-        if self._response is not None:
-            await self._response.aclose()
+    async def _close_response(self, correlation_key: str) -> None:
+        response = self._responses.get(correlation_key)
+        if response is not None:
+            await response.aclose()
 
-    async def cancel(self) -> None:
-        self._cancel_requested = True
-        await self._close_response()
-        if self._owner is not None and self._owner is not asyncio.current_task():
-            self._owner.cancel()
+    async def cancel(self, correlation_key: str | None = None) -> None:
+        if correlation_key is None:
+            active = tuple(self._owners)
+            if not active:
+                return
+            if len(active) != 1:
+                raise TurnClientError("correlation_key is required with concurrent turns")
+            correlation_key = active[0]
+        self._cancel_requested.add(correlation_key)
+        await self._close_response(correlation_key)
+        owner = self._owners.get(correlation_key)
+        if owner is not None and owner is not asyncio.current_task():
+            owner.cancel()

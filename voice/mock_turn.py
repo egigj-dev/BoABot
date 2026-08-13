@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import dataclass, field
 
 from .events import TurnDone, TurnRequest
+from .sentence_buffer import SentenceBuffer
 from .turn_client import EventHandler, TurnResult, _notify
 
 
@@ -30,6 +31,8 @@ class ScriptedTurnService:
     async def run(self, request: TurnRequest, on_event: EventHandler | None = None) -> TurnResult:
         self.requests.append(request)
         tokens: list[str] = []
+        approved_sentences: list[str] = []
+        sentence_buffer = SentenceBuffer()
         tool = {"type": "tool", "query": request.question}
         await _notify(on_event, tool)
         for offset in range(0, len(self.text), self.chunk_chars):
@@ -40,6 +43,12 @@ class ScriptedTurnService:
             token = self.text[offset:offset + self.chunk_chars]
             tokens.append(token)
             await _notify(on_event, {"type": "token", "text": token})
+            for sentence in sentence_buffer.feed_token(token):
+                approved_sentences.append(sentence)
+                await _notify(on_event, {"type": "approved_sentence", "text": sentence})
+        for sentence in sentence_buffer.finish():
+            approved_sentences.append(sentence)
+            await _notify(on_event, {"type": "approved_sentence", "text": sentence})
         done_sources = [dict(source) for source in self.sources]
         if request.include_vetted_text:
             for index, source in enumerate(done_sources):
@@ -55,7 +64,9 @@ class ScriptedTurnService:
                                  "pii_redacted": False, "usage": {}})
         passages = tuple(source["passage_text"] for source in done.sources
                          if source.get("passage_text"))
-        return TurnResult(tuple(tokens), done, (tool,), passages)
+        return TurnResult(
+            tuple(tokens), done, (tool,), passages, tuple(approved_sentences),
+        )
 
-    async def cancel(self) -> None:
+    async def cancel(self, correlation_key: str | None = None) -> None:
         self.cancelled = True

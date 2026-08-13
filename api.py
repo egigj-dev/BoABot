@@ -21,10 +21,13 @@ from retrieve import embedding_stats
 from retrieve import shutdown as shutdown_retrieval
 from retrieve import warmup as warmup_retrieval
 from trust import NO_EVIDENCE_MESSAGE
+from voice.fidelity_guard import FidelityGuard
+from voice.sentence_buffer import SentenceBuffer
 
 logger = logging.getLogger(__name__)
 FIRST_TOKEN_BUDGET_MS = 6000
 _SENTENCE_END_RE = re.compile(r"[.!?][\"'»”\)\]]?(?:\s|$)")
+_fidelity_guard = FidelityGuard()
 
 
 @asynccontextmanager
@@ -101,6 +104,38 @@ def stream_answer(messages, session_id=None, usage=None):
 def source(hit: dict[str, Any]) -> dict[str, str]:
     """Return citation metadata without sending retrieved passages to the browser."""
     return {key: str(hit.get(key) or "") for key in ("id", "doc", "article", "url")}
+
+
+def authorized_sentences(token_stream, hits):
+    """Yield complete model sentences only after evidence-fidelity validation.
+
+    This is the voice streaming trust boundary: callers may begin rendering a
+    sentence before model completion, but never before that complete sentence
+    has been checked against the already-vetted retrieval passages.
+    """
+    evidence = tuple({
+        "doc": str(hit.get("doc") or ""),
+        "article": str(hit.get("article") or ""),
+        "passage_text": str(hit.get("text") or ""),
+    } for hit in hits)
+    buffer = SentenceBuffer()
+    for token in token_stream:
+        for sentence in buffer.feed_token(token):
+            verdict = _fidelity_guard.verify_sources(sentence, evidence)
+            if not verdict.approved:
+                raise RAGError(f"answer fidelity check failed: {verdict.reason}")
+            yield sentence
+    for sentence in buffer.finish():
+        verdict = _fidelity_guard.verify_sources(sentence, evidence)
+        if not verdict.approved:
+            raise RAGError(f"answer fidelity check failed: {verdict.reason}")
+        yield sentence
+
+
+def safe_sentences(text: str) -> list[str]:
+    """Split deterministic policy prose into the same speakable sentence units."""
+    buffer = SentenceBuffer()
+    return buffer.feed_token(text) + buffer.finish()
 
 
 @app.get("/health")
@@ -363,7 +398,10 @@ def generate_turn(req: TurnReq):
             sessions.record(session, safe_question, decision.message)
             outcome = decision.outcome
             handoff = decision.handoff
-            yield emit({"type": "token", "text": decision.message})
+            for index, sentence in enumerate(safe_sentences(decision.message)):
+                piece = sentence if index == 0 else f" {sentence}"
+                yield emit({"type": "token", "text": piece})
+                yield emit({"type": "approved_sentence", "text": sentence})
             yield done_event(outcome, handoff=handoff,
                              pii_redacted=decision.pii_redacted)
             return
@@ -388,7 +426,10 @@ def generate_turn(req: TurnReq):
         if refusal:
             sessions.record(session, decision.question, refusal)
             outcome = Outcome.UNSUPPORTED
-            yield emit({"type": "token", "text": refusal})
+            for index, sentence in enumerate(safe_sentences(refusal)):
+                piece = sentence if index == 0 else f" {sentence}"
+                yield emit({"type": "token", "text": piece})
+                yield emit({"type": "approved_sentence", "text": sentence})
             yield done_event(outcome)
             return
         for hit in hits:
@@ -401,14 +442,18 @@ def generate_turn(req: TurnReq):
         messages = grounded_messages(decision.question, session.history, hits)
 
         answer_parts = []
-        for token in stream_answer(messages, session.session_id, usage):
-            answer_parts.append(token)
-            yield emit({"type": "token", "text": token})
-        answer = "".join(answer_parts).strip()
+        for sentence in authorized_sentences(
+                stream_answer(messages, session.session_id, usage), hits):
+            piece = sentence if not answer_parts else f" {sentence}"
+            answer_parts.append(sentence)
+            yield emit({"type": "token", "text": piece})
+            yield emit({"type": "approved_sentence", "text": sentence})
+        answer = " ".join(answer_parts).strip()
         if not answer:
             answer = NO_EVIDENCE_MESSAGE
             outcome = Outcome.UNSUPPORTED
             yield emit({"type": "token", "text": answer})
+            yield emit({"type": "approved_sentence", "text": answer})
         else:
             outcome = Outcome.ANSWER
         sessions.record(session, decision.question, answer)
@@ -419,7 +464,10 @@ def generate_turn(req: TurnReq):
         sessions.record(session, question, HANDOFF_MESSAGE)
         outcome = Outcome.HANDOFF
         handoff = True
-        yield emit({"type": "token", "text": HANDOFF_MESSAGE})
+        for index, sentence in enumerate(safe_sentences(HANDOFF_MESSAGE)):
+            piece = sentence if index == 0 else f" {sentence}"
+            yield emit({"type": "token", "text": piece})
+            yield emit({"type": "approved_sentence", "text": sentence})
         yield done_event(outcome, handoff=True)
     except Exception:
         logger.exception("Unexpected error while serving /turn")
@@ -427,7 +475,10 @@ def generate_turn(req: TurnReq):
         sessions.record(session, question, HANDOFF_MESSAGE)
         outcome = Outcome.HANDOFF
         handoff = True
-        yield emit({"type": "token", "text": HANDOFF_MESSAGE})
+        for index, sentence in enumerate(safe_sentences(HANDOFF_MESSAGE)):
+            piece = sentence if index == 0 else f" {sentence}"
+            yield emit({"type": "token", "text": piece})
+            yield emit({"type": "approved_sentence", "text": sentence})
         yield done_event(outcome, handoff=True)
     finally:
         final_ms = (time.perf_counter() - started) * 1000

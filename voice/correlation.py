@@ -66,6 +66,14 @@ class CorrelationRegistry:
             raise CorrelationError("unknown render request id")
         return item
 
+    def active_render_ids(self, call_id: str) -> tuple[str, ...]:
+        """Return a snapshot so barge-in can cancel every queued renderer."""
+        return tuple(self.require(call_id).render_ids)
+
+    def finish_render(self, call_id: str, request_id: str) -> None:
+        """Remove a completed render from the set targeted by barge-in."""
+        self.require(call_id).render_ids.discard(request_id)
+
     def update_session(self, call_id: str, session_id: str) -> None:
         if not session_id:
             raise CorrelationError("session_id is required")

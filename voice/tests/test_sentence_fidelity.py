@@ -1,5 +1,8 @@
 """Sentence boundaries and wrong-label fidelity regression."""
 
+import pytest
+
+from api import authorized_sentences
 from voice.fidelity_guard import FidelityGuard
 from voice.sentence_buffer import SentenceBuffer
 
@@ -27,3 +30,20 @@ def test_factual_sentence_without_server_evidence_fails_closed() -> None:
     result = FidelityGuard().verify_sources("Norma është 2.5%.", [{"id": "old-server"}])
     assert not result.approved
     assert "no cited vetted chunk" in result.reason
+
+
+def test_fidelity_guard_treats_dot_as_albanian_thousands_separator() -> None:
+    guard = FidelityGuard()
+    answer = "Komisioni maksimal është 10.000 ALL."
+    evidence = "Komisioni maksimal është 10000 ALL."
+    assert guard.verify_sources(answer, [{"passage_text": evidence}]).approved
+
+
+def test_server_authorizes_complete_sentences_and_rejects_wrong_values() -> None:
+    hits = [{"doc": "Tarifat", "article": "", "text": "Komisioni është 10 EUR."}]
+    assert list(authorized_sentences(iter(("Komisioni është ", "10 EUR. Tjetër.",)), hits)) == [
+        "Komisioni është 10 EUR.",
+        "Tjetër.",
+    ]
+    with pytest.raises(RuntimeError, match="fidelity"):
+        list(authorized_sentences(iter(("Komisioni është 20 EUR.",)), hits))
