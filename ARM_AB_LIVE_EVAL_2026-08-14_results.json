@@ -1,0 +1,2136 @@
+{
+  "metadata": {
+    "arm_versions": {
+      "A": {
+        "module": "voice.cli.live_run",
+        "module_sha256": "a1f4b81a6cc9168f9cfa07af35d643720e7c7177098d8b823a5247b3e892141d",
+        "tts_adapter_sha256": "9d763c08aa42a137747b40ad2d8adc6f934f6120080ff06445a4582151d8882c"
+      },
+      "B": {
+        "bridge_sha256": "b2878a5ed7d2ab2d26fe5fc47e0f6b33e28f89f5d9bddac62b847dd9546e0c19",
+        "module": "voice.cli.live_bridge_demo",
+        "module_sha256": "ad0bf1d46efde11417103a125a99f2d25bfc6f8eed84ec02320fd555c7be3571"
+      }
+    },
+    "authority": {
+      "api_sha256": "40421b522995d566a6edbe287dbcb8b8c95c7c7460ee4a4f48c6ba59b12f089a",
+      "health_after_restart": {
+        "ok": true
+      },
+      "module": "api:app",
+      "rag_sha256": "2481624241120bffb6bcbaf61f2880237597af548babbfc1ba2c5e3c8701df28",
+      "restart": "Killed prior PID 1155455; started current-tree uvicorn PID 1169568 at 2026-08-14 06:21:49 UTC on 127.0.0.1:8000.",
+      "runtime_snapshot_note": "These are the files loaded by PID 1169568 at 06:21:49 UTC. api.py and rag.py hashes were captured immediately before restart; callcenter.py, retrieve.py, and trust.py were clean at the initial status check, so their Git HEAD hashes identify the loaded bytes. Concurrent workspace edits appeared after startup; uvicorn was not run with --reload, so they did not affect these live results.",
+      "runtime_snapshot_sha256": {
+        "api.py": "40421b522995d566a6edbe287dbcb8b8c95c7c7460ee4a4f48c6ba59b12f089a",
+        "callcenter.py": "8b6aa32a8a286dbb8c423ba75fa78dac70d82a8a7266061b514d41f945d4a40d",
+        "rag.py": "2481624241120bffb6bcbaf61f2880237597af548babbfc1ba2c5e3c8701df28",
+        "retrieve.py": "b42cadb84d3499d043306121922e6e018fc35a6fd7d730db1aebc198794ef572",
+        "trust.py": "972345900acfd59f6deebbc2d4b089eacac28cf770df5c3aa6798db95e4b0d0e"
+      }
+    },
+    "billing_control": "Each of the 30 questions was run once per arm; qa-025 Arm B was terminated after a >3 minute hang and was not retried.",
+    "git_head": "c97a67256612f3f7bda6252b9a617bd6f2665e62",
+    "model": {
+      "arm_a_asr": "azure-speech-service-default:sq-AL",
+      "arm_b_live": "gemini-3.1-flash-live-preview",
+      "azure_tts_voice": "sq-AL-AnilaNeural",
+      "turn_authority": "google/gemini-3.1-flash-lite"
+    },
+    "pii_flag_provenance": "Both existing runner audit schemas omit TurnDone.pii_redacted. Values were reconstructed from each exact ASR transcript using the PII regex path from the authority snapshot loaded at 06:21:49 UTC. Those regex definitions were unchanged by the later concurrent edits.",
+    "timestamp": "2026-08-14T06:50:09.054365+00:00",
+    "workspace_scope_note": "Evaluation commands created only /tmp WAVs, run outputs/logs, and report artifacts and did not edit repository files. Concurrent edits to api.py, rag.py, callcenter.py, retrieve.py, trust.py, and voice/tests/test_callcenter_policy.py appeared after the API restart."
+  },
+  "rows": [
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-001",
+      "qnum": 1,
+      "question": "Sa është interesi për një depozitë pa afat te Raiffeisen?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 4376.851,
+        "asr_first_interim": 1088.941,
+        "asr_stable_interim": 1388.941,
+        "end_to_end_complete": 6905.594,
+        "end_to_end_first_audio": 6022.214,
+        "tts_first_byte": 1642.155,
+        "tts_provider_first_byte": 772.873,
+        "turn_first_approved_sentence": 869.063,
+        "turn_first_token": 868.353
+      },
+      "transcript": "Sa është interesi për 1 depozitë pa afat raiffeisen."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-002",
+      "qnum": 2,
+      "question": "Për shumën maksimale, çfarë norme ka depozita tre-mujore te Banka Tirana?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5628.651,
+        "asr_first_interim": 1118.59,
+        "asr_stable_interim": 1418.59,
+        "end_to_end_complete": 8157.896,
+        "end_to_end_first_audio": 7417.516,
+        "tts_first_byte": 1786.38,
+        "tts_provider_first_byte": 583.8,
+        "turn_first_approved_sentence": 1202.433,
+        "turn_first_token": 1202.093
+      },
+      "transcript": "Për shumën maksimale, çfarë norme ka depozita tremujore te banka tirana?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-003",
+      "qnum": 3,
+      "question": "Sa jep Credins për depozitë 12-mujore në shumën minimale?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 4946.01,
+        "asr_first_interim": 1040.572,
+        "asr_stable_interim": 1340.572,
+        "end_to_end_complete": 7113.829,
+        "end_to_end_first_audio": 6216.947,
+        "tts_first_byte": 1267.679,
+        "tts_provider_first_byte": 599.46,
+        "turn_first_approved_sentence": 668.001,
+        "turn_first_token": 667.395
+      },
+      "transcript": "Sa jep credins për depozite 12 mujore në shumën minimale."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-004",
+      "qnum": 4,
+      "question": "Po një depozitë 36-mujore në shumën maksimale te OTP, sa e ka normën?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 6188.826,
+        "asr_first_interim": 1112.78,
+        "asr_stable_interim": 1412.78,
+        "end_to_end_complete": 8724.046,
+        "end_to_end_first_audio": 8052.042,
+        "tts_first_byte": 1860.16,
+        "tts_provider_first_byte": 736.359,
+        "turn_first_approved_sentence": 1123.57,
+        "turn_first_token": 1123.171
+      },
+      "transcript": "Po 1 depozitë 36 mujore në shumën maksimale TOTP sa e ka normën."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-005",
+      "qnum": 5,
+      "question": "Për depozitë 12-mujore në shumën minimale, sa janë OTP dhe Union?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5458.099,
+        "asr_first_interim": 1114.685,
+        "asr_stable_interim": 1414.685,
+        "end_to_end_complete": 7969.731,
+        "end_to_end_first_audio": 6936.871,
+        "tts_first_byte": 1475.702,
+        "tts_provider_first_byte": 607.911,
+        "turn_first_approved_sentence": 867.594,
+        "turn_first_token": 866.899
+      },
+      "transcript": "Për depozita 12 mujore në shumën minimale sa janë të p dhe union."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-006",
+      "qnum": 6,
+      "question": "Sa është përqindja e komisionit të disbursimit për kredi shtëpie te Banka e Bashkuar e Shqipërisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 6326.177,
+        "asr_first_interim": 1116.615,
+        "asr_stable_interim": 1416.615,
+        "end_to_end_complete": 8622.045,
+        "end_to_end_first_audio": 7807.697,
+        "tts_first_byte": 1478.33,
+        "tts_provider_first_byte": 558.549,
+        "turn_first_approved_sentence": 919.653,
+        "turn_first_token": 919.076
+      },
+      "transcript": "Sa është përqindja e komisionit të disbursimit për kredi shtëpie Banka e Bashkuar e Shqipërisë."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-007",
+      "qnum": 7,
+      "question": "Çfarë përqindjeje ka OTP për shlyerjen e parakohshme, pjesërisht ose totalisht, të kredisë së shtëpisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 6916.493,
+        "asr_first_interim": 1044.48,
+        "asr_stable_interim": 1344.48,
+        "end_to_end_complete": 9311.427,
+        "end_to_end_first_audio": 8315.734,
+        "tts_first_byte": 1395.215,
+        "tts_provider_first_byte": 597.427,
+        "turn_first_approved_sentence": 797.602,
+        "turn_first_token": 796.783
+      },
+      "transcript": "Çfarë përqindje ka atë për shlyerjen e parakohshme pjesërisht ose totalisht të kredisë së shtëpisë."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-008",
+      "qnum": 8,
+      "question": "Sa është komisioni në përqindje për ndryshimin e kontratës së kredisë së shtëpisë te BKT?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5944.019,
+        "asr_first_interim": 1109.07,
+        "asr_stable_interim": 1409.07,
+        "end_to_end_complete": 8059.742,
+        "end_to_end_first_audio": 7302.091,
+        "tts_first_byte": 1353.016,
+        "tts_provider_first_byte": 543.847,
+        "turn_first_approved_sentence": 808.979,
+        "turn_first_token": 808.627
+      },
+      "transcript": "Sa është komisioni në përqindje për ndryshimin e kontratës së kredisë së shtëpisë të bkt."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-009",
+      "qnum": 9,
+      "question": "Sa është komisioni i administrimit në përqindje për kredi konsumatore të pasiguruar te Intesa SanPaolo?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 7021.965,
+        "asr_first_interim": 1059.28,
+        "asr_stable_interim": 1359.28,
+        "end_to_end_complete": 9424.471,
+        "end_to_end_first_audio": 8655.869,
+        "tts_first_byte": 1630.707,
+        "tts_provider_first_byte": 600.249,
+        "turn_first_approved_sentence": 1030.255,
+        "turn_first_token": 1029.944
+      },
+      "transcript": "Sa është komisioni i administrimit në përqindje për kredi konsumatore të pasiguruar të intesa sanpaolo."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-010",
+      "qnum": 10,
+      "question": "Te Procredit, sa është përqindja për shlyerje të parakohshme të kredisë konsumatore të pasiguruar?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 6615.897,
+        "asr_first_interim": 1121.967,
+        "asr_stable_interim": 1421.967,
+        "end_to_end_complete": 8673.019,
+        "end_to_end_first_audio": 7857.244,
+        "tts_first_byte": 1237.928,
+        "tts_provider_first_byte": 556.201,
+        "turn_first_approved_sentence": 681.427,
+        "turn_first_token": 681.086
+      },
+      "transcript": "Tepër kredit sa është përqindja për shlyerje të parakohshme të kredisë konsumatore të pasiguruar?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-011",
+      "qnum": 11,
+      "question": "Sa është komisioni vjetor i mirëmbajtjes së kartës së kreditit për biznes te Raiffeisen?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5838.066,
+        "asr_first_interim": 1397.623,
+        "asr_stable_interim": 1697.623,
+        "end_to_end_complete": 7956.437,
+        "end_to_end_first_audio": 7174.136,
+        "tts_first_byte": 1333.131,
+        "tts_provider_first_byte": 602.987,
+        "turn_first_approved_sentence": 730.03,
+        "turn_first_token": 729.828
+      },
+      "transcript": "Sa është komisioni vjetor i mirëmbajtjes së kartës së kreditit për biznes të raiffeisen."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-012",
+      "qnum": 12,
+      "question": "Sa kushton dhënia e një PIN-i të ri për kartë krediti biznesi te BKT?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5505.206,
+        "asr_first_interim": 1116.024,
+        "asr_stable_interim": 1416.024,
+        "end_to_end_complete": 8041.079,
+        "end_to_end_first_audio": 7158.724,
+        "tts_first_byte": 1650.597,
+        "tts_provider_first_byte": 530.577,
+        "turn_first_approved_sentence": 1119.786,
+        "turn_first_token": 1119.189
+      },
+      "transcript": "Sa kushton dhënia e 1 i tëri për kartë krediti biznesi të bkt."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-013",
+      "qnum": 13,
+      "question": "Çfarë vlere ka lëshimi i kartës së debitit për biznes te OTP?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 4705.428,
+        "asr_first_interim": 1035.685,
+        "asr_stable_interim": 1335.685,
+        "end_to_end_complete": 6994.196,
+        "end_to_end_first_audio": 6067.142,
+        "tts_first_byte": 1358.737,
+        "tts_provider_first_byte": 595.116,
+        "turn_first_approved_sentence": 763.395,
+        "turn_first_token": 763.086
+      },
+      "transcript": "Çfarë vlere ka lëshimi i kartës së debitit për biznes teutë p."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff. Expected fixture figure not present in an actual answer outcome.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-014",
+      "qnum": 14,
+      "question": "Për një kartë debiti biznesi te Raiffeisen, sa është mirëmbajtja vjetore?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5195.555,
+        "asr_first_interim": 1112.399,
+        "asr_stable_interim": 1412.399,
+        "end_to_end_complete": 7287.703,
+        "end_to_end_first_audio": 6504.008,
+        "tts_first_byte": 1304.475,
+        "tts_provider_first_byte": 542.739,
+        "turn_first_approved_sentence": 761.564,
+        "turn_first_token": 761.273
+      },
+      "transcript": "Për 1 kartë debiti biznesi të raiffeisen sa është mirëmbajtja vjetore."
+    },
+    {
+      "actual_outcome": "answer",
+      "answer_figure_match": true,
+      "answer_text": "Komisioni minimal për tërheqje cash me kartë debiti nga terminalet e bankave të tjera për Bankën Union është 350.00 sipas dokumentit Komisionet për biznese.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 360844,
+        "frames": 180400
+      },
+      "expected": "answer",
+      "handoff": false,
+      "native_dropped": null,
+      "notes": "",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-015",
+      "qnum": 15,
+      "question": "Sa është komisioni minimal për tërheqje me kartë debiti biznesi në ATM të bankave të tjera te Union Bank?",
+      "sources": [
+        {
+          "article": "",
+          "doc": "Komisionet për biznese",
+          "id": "rate_0113",
+          "url": "https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/"
+        },
+        {
+          "article": "",
+          "doc": "Komisionet për biznese",
+          "id": "rate_0112",
+          "url": "https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/"
+        },
+        {
+          "article": "",
+          "doc": "Komisionet për biznese",
+          "id": "rate_0114",
+          "url": "https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/"
+        },
+        {
+          "article": "",
+          "doc": "Komisionet për biznese",
+          "id": "rate_0115",
+          "url": "https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/"
+        },
+        {
+          "article": "",
+          "doc": "Komisionet për biznese",
+          "id": "rate_0099",
+          "url": "https://www.bankofalbania.org/Mbikeqyrja/Sistemi_financiar_normat_e_interesit_dhe_komisionet/Komisionet_per_biznese/"
+        }
+      ],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 7134.533,
+        "asr_first_interim": 1107.085,
+        "asr_stable_interim": 1407.085,
+        "end_to_end_complete": 10301.751,
+        "end_to_end_first_audio": 9511.692,
+        "tts_first_byte": 2256.965,
+        "tts_provider_first_byte": 778.511,
+        "turn_first_approved_sentence": 1478.326,
+        "turn_first_token": 1478.062
+      },
+      "transcript": "Sa është komisioni minimal për tërheqjen me kartë debiti biznesi në atm të bankave të tjera të Union Bank."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-016",
+      "qnum": 16,
+      "question": "Cilat janë disa nga detyrat kryesore të Bankës së Shqipërisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 4444.096,
+        "asr_first_interim": 1110.81,
+        "asr_stable_interim": 1410.81,
+        "end_to_end_complete": 7082.904,
+        "end_to_end_first_audio": 6260.924,
+        "tts_first_byte": 1814.027,
+        "tts_provider_first_byte": 671.341,
+        "turn_first_approved_sentence": 1142.462,
+        "turn_first_token": 1141.893
+      },
+      "transcript": "Cilat janë disa nga detyrat kryesore të bankës së shqipërisë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-017",
+      "qnum": 17,
+      "question": "Çfarë përcakton rregullorja për Regjistrin e Kredive të Bankës së Shqipërisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5228.925,
+        "asr_first_interim": 1114.667,
+        "asr_stable_interim": 1414.667,
+        "end_to_end_complete": 8060.578,
+        "end_to_end_first_audio": 7421.026,
+        "tts_first_byte": 2188.449,
+        "tts_provider_first_byte": 726.243,
+        "turn_first_approved_sentence": 1461.998,
+        "turn_first_token": 1460.983
+      },
+      "transcript": "Çfarë përcakton rregullorja për regjistrin e kredive të bankës së shqipërisë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-018",
+      "qnum": 18,
+      "question": "Si e vendos një bankë e nivelit të dytë depozitën njëditore në Bankën e Shqipërisë dhe kur i kthehen fondet?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 7008.682,
+        "asr_first_interim": 1104.154,
+        "asr_stable_interim": 1404.154,
+        "end_to_end_complete": 9820.57,
+        "end_to_end_first_audio": 8929.582,
+        "tts_first_byte": 1806.384,
+        "tts_provider_first_byte": 546.397,
+        "turn_first_approved_sentence": 1259.805,
+        "turn_first_token": 1259.334
+      },
+      "transcript": "Si e vendos 1 bankë e nivelit të 2-të depozitën njëditore në Banka e Shqipërisë dhe kur i kthehen fondet."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-019",
+      "qnum": 19,
+      "question": "Çfarë duhet të mbulojnë treguesit e likuiditetit në planin e rimëkëmbjes së një banke?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5750.778,
+        "asr_first_interim": 1116.003,
+        "asr_stable_interim": 1416.003,
+        "end_to_end_complete": 8405.617,
+        "end_to_end_first_audio": 7423.272,
+        "tts_first_byte": 1670.052,
+        "tts_provider_first_byte": 547.503,
+        "turn_first_approved_sentence": 1122.35,
+        "turn_first_token": 1121.131
+      },
+      "transcript": "Çfarë duhet të mbulojnë treguesit e likuiditetit në planin e rimëkëmbjes së 1 banke?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-020",
+      "qnum": 20,
+      "question": "Çfarë ndodh me një subjekt financiar jobankë pasi i revokohet licenca?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5194.46,
+        "asr_first_interim": 1114.829,
+        "asr_stable_interim": 1414.829,
+        "end_to_end_complete": 7533.532,
+        "end_to_end_first_audio": 6772.531,
+        "tts_first_byte": 1574.957,
+        "tts_provider_first_byte": 582.514,
+        "turn_first_approved_sentence": 992.252,
+        "turn_first_token": 991.649
+      },
+      "transcript": "Çfarë ndodh me 1 subjekt financiar jobankë pasi i revokohet licenca?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-021",
+      "qnum": 21,
+      "question": "Kur mund të klasifikohet sipas kritereve normale një kredi e ristrukturuar?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5223.723,
+        "asr_first_interim": 1108.245,
+        "asr_stable_interim": 1408.245,
+        "end_to_end_complete": 7663.34,
+        "end_to_end_first_audio": 6750.92,
+        "tts_first_byte": 1524.251,
+        "tts_provider_first_byte": 555.1,
+        "turn_first_approved_sentence": 968.919,
+        "turn_first_token": 967.839
+      },
+      "transcript": "Kur mund të klasifikohet sipas kritereve normale 1 kredie ristrukturuar."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-022",
+      "qnum": 22,
+      "question": "Kush është përgjegjës për zbatimin e rregullave të brendshme për rrezikun operacional në një bankë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 6512.827,
+        "asr_first_interim": 1114.959,
+        "asr_stable_interim": 1414.959,
+        "end_to_end_complete": 8936.529,
+        "end_to_end_first_audio": 8161.569,
+        "tts_first_byte": 1645.733,
+        "tts_provider_first_byte": 596.775,
+        "turn_first_approved_sentence": 1048.717,
+        "turn_first_token": 1048.316
+      },
+      "transcript": "Kush është përgjegjës për zbatimin e rregullave të brendshme për rrezikun operacional në 1 bankë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-023",
+      "qnum": 23,
+      "question": "Çfarë duhet të thotë kontrata e depozitës për maturimin, rinovimin dhe mbylljen para afatit?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 6404.128,
+        "asr_first_interim": 1126.428,
+        "asr_stable_interim": 1426.428,
+        "end_to_end_complete": 8854.272,
+        "end_to_end_first_audio": 7873.112,
+        "tts_first_byte": 1465.248,
+        "tts_provider_first_byte": 543.227,
+        "turn_first_approved_sentence": 921.798,
+        "turn_first_token": 920.918
+      },
+      "transcript": "Çfarë duhet të thotë kontrata e depozitës për maturimin, rinovimin dhe mbylljen para afatit?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-024",
+      "qnum": 24,
+      "question": "Kur e jep ose e refuzon Banka e Shqipërisë licencën për një institucion pagesash?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5739.245,
+        "asr_first_interim": 1120.464,
+        "asr_stable_interim": 1420.464,
+        "end_to_end_complete": 8256.483,
+        "end_to_end_first_audio": 7388.436,
+        "tts_first_byte": 1645.816,
+        "tts_provider_first_byte": 580.45,
+        "turn_first_approved_sentence": 1065.153,
+        "turn_first_token": 1064.871
+      },
+      "transcript": "Kur e jep ose Banka e Shqipërisë licencën për 1 institucion pagesash."
+    },
+    {
+      "actual_outcome": "clarify",
+      "answer_figure_match": null,
+      "answer_text": "Mund ta sqaroni pak pyetjen? Për shembull, tregoni bankën, produktin ose rregulloren për të cilën po pyesni.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 250844,
+        "frames": 125400
+      },
+      "expected": "clarify",
+      "handoff": false,
+      "native_dropped": null,
+      "notes": "",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-025",
+      "qnum": 25,
+      "question": "Çfarë norme?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 1932.031,
+        "asr_first_interim": 1117.97,
+        "asr_stable_interim": 1417.97,
+        "end_to_end_complete": 3336.542,
+        "end_to_end_first_audio": 2751.68,
+        "tts_first_byte": 816.818,
+        "tts_provider_first_byte": 670.16,
+        "turn_first_approved_sentence": 146.52,
+        "turn_first_token": 146.295
+      },
+      "transcript": "Çfarë norme?"
+    },
+    {
+      "actual_outcome": "unsupported",
+      "answer_figure_match": null,
+      "answer_text": "Nuk mund të jap normë për depozita të bizneseve, sepse kjo kategori nuk gjendet në korpusin aktual. Tabelat përmbajnë norma depozitash për individë, por jo për biznese; nuk do të hamendësoj shifra.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 415644,
+        "frames": 207800
+      },
+      "expected": "unsupported",
+      "handoff": false,
+      "native_dropped": null,
+      "notes": "",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-029",
+      "qnum": 26,
+      "question": "Sa janë normat e depozitave për bizneset?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 3510.492,
+        "asr_first_interim": 1098.807,
+        "asr_stable_interim": 1398.807,
+        "end_to_end_complete": 5185.718,
+        "end_to_end_first_audio": 4186.516,
+        "tts_first_byte": 673.238,
+        "tts_provider_first_byte": 654.098,
+        "turn_first_approved_sentence": 18.351,
+        "turn_first_token": 17.263
+      },
+      "transcript": "Sa janë normat e depozitave për bizneset."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). pii_redacted=false reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm A manifest omits the field.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-033",
+      "qnum": 27,
+      "question": "Më telefononi te 076 2123 4567 se dua të flas për kartën.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 9137.395,
+        "asr_first_interim": 1110.246,
+        "asr_stable_interim": 1410.246,
+        "end_to_end_complete": 10801.065,
+        "end_to_end_first_audio": 9999.468,
+        "tts_first_byte": 857.362,
+        "tts_provider_first_byte": 603.088,
+        "turn_first_approved_sentence": 254.114,
+        "turn_first_token": 253.83
+      },
+      "transcript": "Më telefononi t 0 7 6 2.123.456 7 se duhet të flas për kartën."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). pii_redacted=false reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm A manifest omits the field.",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-035",
+      "qnum": 28,
+      "question": "PIN-i im 4821 nuk funksionon; ma rregulloni.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5712.854,
+        "asr_first_interim": 1114.346,
+        "asr_stable_interim": 1414.346,
+        "end_to_end_complete": 7239.869,
+        "end_to_end_first_audio": 6459.928,
+        "tts_first_byte": 744.574,
+        "tts_provider_first_byte": 561.464,
+        "turn_first_approved_sentence": 182.685,
+        "turn_first_token": 182.197
+      },
+      "transcript": "Krijim 4.821 nuk funksionon ma rregulloni."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). pii_redacted=false reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm A manifest omits the field.",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-037",
+      "qnum": 29,
+      "question": "Ia tregova dikujt OTP-në 654321 dhe tani kam frikë se hyri në llogari.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 8274.167,
+        "asr_first_interim": 1118.467,
+        "asr_stable_interim": 1418.467,
+        "end_to_end_complete": 10495.016,
+        "end_to_end_first_audio": 9285.657,
+        "tts_first_byte": 890.565,
+        "tts_provider_first_byte": 627.848,
+        "turn_first_approved_sentence": 262.55,
+        "turn_first_token": 262.252
+      },
+      "transcript": "Ia tregova dikujt open 654.321 dhe tani kam frikë se hyri në llogari."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. Mos ndani PIN-in, fjalëkalimin ose kodet e verifikimit në këtë bisedë.",
+      "approved_vs_spoken": null,
+      "arm": "A",
+      "audio_bytes_or_frames": {
+        "bytes": 322844,
+        "frames": 161400
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": null,
+      "notes": "Caller audio was emitted on a handoff turn (incorrect emission). pii_redacted=false reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm A manifest omits the field.",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-038",
+      "qnum": 30,
+      "question": "Nuk e njoh këtë transaksion në llogarinë time; dua ta kundërshtoj tani.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "asr_final": 5262.054,
+        "asr_first_interim": 1103.952,
+        "asr_stable_interim": 1403.952,
+        "end_to_end_complete": 6931.123,
+        "end_to_end_first_audio": 6025.919,
+        "tts_first_byte": 761.462,
+        "tts_provider_first_byte": 569.547,
+        "turn_first_approved_sentence": 191.78,
+        "turn_first_token": 191.275
+      },
+      "transcript": "Nuk e njoh këtë transaksion në llogarinë time. Dua ta kundërshtoj tani."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 665070,
+        "events": 76
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-001",
+      "qnum": 1,
+      "question": "Sa është interesi për një depozitë pa afat te Raiffeisen?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 20087.211,
+        "turn_complete": 172.717
+      },
+      "transcript": "S'është interesi për një depozitë pa afat te Raiffeisen."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 578161,
+        "events": 78
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-002",
+      "qnum": 2,
+      "question": "Për shumën maksimale, çfarë norme ka depozita tre-mujore te Banka Tirana?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 20012.034,
+        "turn_complete": 944.902
+      },
+      "transcript": "Për shumën maksimale, çfarë norme ka depozita tremujore te Banka Tirana?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 609379,
+        "events": 69
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-003",
+      "qnum": 3,
+      "question": "Sa jep Credins për depozitë 12-mujore në shumën minimale?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19501.243,
+        "turn_complete": 803.24
+      },
+      "transcript": "Sajep kredins për depozitë 12 mujore në shumën minimale"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 664102,
+        "events": 78
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-004",
+      "qnum": 4,
+      "question": "Po një depozitë 36-mujore në shumën maksimale te OTP, sa e ka normën?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 22305.99,
+        "turn_complete": 1039.349
+      },
+      "transcript": "Bëj një depozitë 36 mujore në shumën maksimale te OTP, sa e ka normën?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 570455,
+        "events": 66
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-005",
+      "qnum": 5,
+      "question": "Për depozitë 12-mujore në shumën minimale, sa janë OTP dhe Union?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19458.903,
+        "turn_complete": 899.576
+      },
+      "transcript": "Për depozitë 12 mujore në shumën minimale, sa janë OTP dhe Union?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 703013,
+        "events": 86
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-006",
+      "qnum": 6,
+      "question": "Sa është përqindja e komisionit të disbursimit për kredi shtëpie te Banka e Bashkuar e Shqipërisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 23423.887,
+        "turn_complete": 789.413
+      },
+      "transcript": "Sa është përqindja e komisionit të disbursimit për kredi shtëpie te Banka e Bashkuar e Shqipërisë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 715492,
+        "events": 80
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-007",
+      "qnum": 7,
+      "question": "Çfarë përqindjeje ka OTP për shlyerjen e parakohshme, pjesërisht ose totalisht, të kredisë së shtëpisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 23720.124,
+        "turn_complete": 20.045
+      },
+      "transcript": "Çfarë përqindjeje ka OTP për shlyerjen e parakohshme, pjesërisht ose totalisht, të kredisë së shtëpisë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 1012720,
+        "events": 114
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-008",
+      "qnum": 8,
+      "question": "Sa është komisioni në përqindje për ndryshimin e kontratës së kredisë së shtëpisë te BKT?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 29064.978,
+        "turn_complete": 1009.889
+      },
+      "transcript": "Sa është komisioni në përqindje për ndryshimin e kontratës së kredisë së shtëpisë te BKT?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 795171,
+        "events": 93
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-009",
+      "qnum": 9,
+      "question": "Sa është komisioni i administrimit në përqindje për kredi konsumatore të pasiguruar te Intesa SanPaolo?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 25516.024,
+        "turn_complete": 1008.835
+      },
+      "transcript": "Sa është komisioni i administrimit në përqindje për kredi konsumatore të pasiguruar te Intesa Sanpaolo?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 562787,
+        "events": 61
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-010",
+      "qnum": 10,
+      "question": "Te Procredit, sa është përqindja për shlyerje të parakohshme të kredisë konsumatore të pasiguruar?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 20220.994,
+        "turn_complete": 1113.29
+      },
+      "transcript": "debit credit sa është përqindja për shlyerje të parakohshme të kredisë konsumatore të pasiguruar?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 763020,
+        "events": 84
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-011",
+      "qnum": 11,
+      "question": "Sa është komisioni vjetor i mirëmbajtjes së kartës së kreditit për biznes te Raiffeisen?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 23682.334,
+        "turn_complete": 916.154
+      },
+      "transcript": "Sash komisioni vjetor i mirëmbajtjes së kartës së kreditit për biznes të Raiffeisen"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 566140,
+        "events": 69
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-012",
+      "qnum": 12,
+      "question": "Sa kushton dhënia e një PIN-i të ri për kartë krediti biznesi te BKT?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19750.462,
+        "turn_complete": 879.299
+      },
+      "transcript": "Sa kushton dhënia e një PIN-i të ri për kartë krediti biznesi të BKT?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 656405,
+        "events": 78
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-013",
+      "qnum": 13,
+      "question": "Çfarë vlere ka lëshimi i kartës së debitit për biznes te OTP?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 20614.584,
+        "turn_complete": 1213.723
+      },
+      "transcript": "Çfarë vlere ka lëshimi i kartës së debitit për biznes te OTP?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 705866,
+        "events": 81
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-014",
+      "qnum": 14,
+      "question": "Për një kartë debiti biznesi te Raiffeisen, sa është mirëmbajtja vjetore?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 21946.016,
+        "turn_complete": 859.25
+      },
+      "transcript": "Për një kartë debiti biznesi te Raiffeisen, sa është mirëmbajtja vjetore?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": false,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 482092,
+        "events": 59
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff. Expected fixture figure not present because no approved answer was rendered.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-015",
+      "qnum": 15,
+      "question": "Sa është komisioni minimal për tërheqje me kartë debiti biznesi në ATM të bankave të tjera te Union Bank?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19094.012,
+        "turn_complete": 1062.463
+      },
+      "transcript": "Sash komisioni minimal për tërheqje me kartë debiti biznesi në ATM të bankave të tjera te Union Bank."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 621349,
+        "events": 72
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-016",
+      "qnum": 16,
+      "question": "Cilat janë disa nga detyrat kryesore të Bankës së Shqipërisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19749.335,
+        "turn_complete": 1080.965
+      },
+      "transcript": "Cilat janë disa nga detyrat kryesore të Bankës së Shqipërisë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 598772,
+        "events": 67
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-017",
+      "qnum": 17,
+      "question": "Çfarë përcakton rregullorja për Regjistrin e Kredive të Bankës së Shqipërisë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19892.162,
+        "turn_complete": 1171.075
+      },
+      "transcript": "Çfarë përcakton rregullorja për regjistrin e kredive të Bankës së Shqipërisë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 727967,
+        "events": 83
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-018",
+      "qnum": 18,
+      "question": "Si e vendos një bankë e nivelit të dytë depozitën njëditore në Bankën e Shqipërisë dhe kur i kthehen fondet?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 24093.305,
+        "turn_complete": 906.511
+      },
+      "transcript": "si e vendos një bankë e nivelit të dytë depozitën njëditore në Bankën e Shqipërisë dhe kur i kthehen fondet."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 533995,
+        "events": 62
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-019",
+      "qnum": 19,
+      "question": "Çfarë duhet të mbulojnë treguesit e likuiditetit në planin e rimëkëmbjes së një banke?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 18687.186,
+        "turn_complete": 2319.77
+      },
+      "transcript": "Çfarë duhet të mbulojnë treguesit e likuiditetit në planin e rimëkëmbjes së një banke?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 846096,
+        "events": 94
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-020",
+      "qnum": 20,
+      "question": "Çfarë ndodh me një subjekt financiar jobankë pasi i revokohet licenca?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 24741.273,
+        "turn_complete": 1292.931
+      },
+      "transcript": "Çfarë ndodh me një subjekt financiar jo bankë pasi i revokohet licenca?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 700107,
+        "events": 83
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-021",
+      "qnum": 21,
+      "question": "Kur mund të klasifikohet sipas kritereve normale një kredi e ristrukturuar?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 22427.969,
+        "turn_complete": 1126.138
+      },
+      "transcript": "Kur mund të klasifikohet sipas kritereve normale një kredi e ristrukturuar?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 514262,
+        "events": 57
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-022",
+      "qnum": 22,
+      "question": "Kush është përgjegjës për zbatimin e rregullave të brendshme për rrezikun operacional në një bankë?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19121.953,
+        "turn_complete": 1451.813
+      },
+      "transcript": "Kush është përgjegjës për zbatimin e rregullave të brendshme për rrezikun operacional në një bankë?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 633825,
+        "events": 72
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-023",
+      "qnum": 23,
+      "question": "Çfarë duhet të thotë kontrata e depozitës për maturimin, rinovimin dhe mbylljen para afatit?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 21671.894,
+        "turn_complete": 1023.686
+      },
+      "transcript": "Çfarë duhet të thotë kontrata e depozitës për maturimin, rinovimin dhe mbylljen para afatit?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "answer",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 643454,
+        "events": 79
+      },
+      "notes": "44-byte/0-frame WAV; no-result trap for an expected answer. Outcome mismatch: expected answer, got handoff.",
+      "pass/fail/error": "fail",
+      "pii_redacted": false,
+      "qa_id": "qa-024",
+      "qnum": 24,
+      "question": "Kur e jep ose e refuzon Banka e Shqipërisë licencën për një institucion pagesash?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 21605.337,
+        "turn_complete": 258.604
+      },
+      "transcript": "Grajep ose refuzon Banka e Shqipërisë licencën për një institucion pagesash."
+    },
+    {
+      "actual_outcome": null,
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": null,
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": null,
+        "frames": null
+      },
+      "expected": "clarify",
+      "handoff": null,
+      "native_dropped": null,
+      "notes": "Runner hung for over three minutes and was terminated once with exit -15; no JSON audit or WAV was produced, and the question was not retried.",
+      "pass/fail/error": "error",
+      "pii_redacted": null,
+      "qa_id": "qa-025",
+      "qnum": 25,
+      "question": "Çfarë norme?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": null,
+      "transcript": null
+    },
+    {
+      "actual_outcome": "unsupported",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "unsupported",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 835518,
+        "events": 99
+      },
+      "notes": "44-byte/0-frame WAV; outcome was unsupported but bridge audit handoff=true suppressed caller audio.",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-029",
+      "qnum": 26,
+      "question": "Sa janë normat e depozitave për bizneset?",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 23192.08,
+        "turn_complete": 16.586
+      },
+      "transcript": "Sa janë normat e depozitave për bizneset?"
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 374565,
+        "events": 58
+      },
+      "notes": "44-byte/0-frame WAV; correct silent caller output for expected handoff. pii_redacted=true reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm B audit omits the field.",
+      "pass/fail/error": "pass",
+      "pii_redacted": true,
+      "qa_id": "qa-033",
+      "qnum": 27,
+      "question": "Më telefononi te 076 2123 4567 se dua të flas për kartën.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 19540.008,
+        "turn_complete": 16.311
+      },
+      "transcript": "Më telefononi te 0762123456 se dua të flas për kartën."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 331801,
+        "events": 43
+      },
+      "notes": "44-byte/0-frame WAV; correct silent caller output for expected handoff. pii_redacted=false reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm B audit omits the field.",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-035",
+      "qnum": 28,
+      "question": "PIN-i im 4821 nuk funksionon; ma rregulloni.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 14722.018,
+        "turn_complete": 278.866
+      },
+      "transcript": "Pini IM4821 nuk funksionon, ma rregulloni."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 651125,
+        "events": 78
+      },
+      "notes": "44-byte/0-frame WAV; correct silent caller output for expected handoff. pii_redacted=false reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm B audit omits the field.",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-037",
+      "qnum": 29,
+      "question": "Ia tregova dikujt OTP-në 654321 dhe tani kam frikë se hyri në llogari.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 24223.115,
+        "turn_complete": 21.285
+      },
+      "transcript": "I tregova dikujt OTP-në 654321 dhe tani kam frikë se hyri në llogari."
+    },
+    {
+      "actual_outcome": "handoff",
+      "answer_figure_match": null,
+      "answer_text": null,
+      "approved_vs_spoken": {
+        "normalized": null,
+        "verbatim": null
+      },
+      "arm": "B",
+      "audio_bytes_or_frames": {
+        "bytes": 44,
+        "frames": 0
+      },
+      "expected": "handoff",
+      "handoff": true,
+      "native_dropped": {
+        "bytes": 536863,
+        "events": 67
+      },
+      "notes": "44-byte/0-frame WAV; correct silent caller output for expected handoff. pii_redacted=false reconstructed from actual transcript with the PII regex path in the authority startup snapshot because the Arm B audit omits the field.",
+      "pass/fail/error": "pass",
+      "pii_redacted": false,
+      "qa_id": "qa-038",
+      "qnum": 30,
+      "question": "Nuk e njoh këtë transaksion në llogarinë time; dua ta kundërshtoj tani.",
+      "sources": [],
+      "spoken_transcript": null,
+      "stage_latency_ms": {
+        "end_to_end_first_audio": null,
+        "live_first_audio": null,
+        "live_input_final": 18712.637,
+        "turn_complete": 204.24
+      },
+      "transcript": "Nuk e njoh këtë transaksion në llogarinë time, dua ta kundërshtoj tani."
+    }
+  ]
+}

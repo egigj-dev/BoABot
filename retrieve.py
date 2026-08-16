@@ -148,6 +148,32 @@ def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None,
         ),
     )[:k]
 
+
+def fetch_chunks_by_ids(chunk_ids, statuses=LIVE):
+    """Fetch known chunk IDs without a second embedding call."""
+    ids = tuple(dict.fromkeys(str(chunk_id) for chunk_id in chunk_ids if chunk_id))
+    if not ids:
+        return []
+    sql = """SELECT id, doc, article, url, text
+             FROM chunks WHERE status = ANY(%s) AND id = ANY(%s)"""
+    with pool().connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, (list(statuses), list(ids)))
+        cols = [description[0] for description in cur.description]
+        by_id = {row[0]: dict(zip(cols, row)) for row in cur.fetchall()}
+    return [by_id[chunk_id] for chunk_id in ids if chunk_id in by_id]
+
+
+def fetch_doc_article(doc_fragment: str, article: str, statuses=LIVE):
+    """Resolve an explicit document/article reference from chunk metadata."""
+    sql = """SELECT id, doc, article, url, text
+             FROM chunks
+             WHERE status = ANY(%s) AND doc ILIKE %s AND article = %s
+             ORDER BY id"""
+    with pool().connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, (list(statuses), f"%{doc_fragment}%", str(article)))
+        cols = [description[0] for description in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
 if __name__ == "__main__":
     import time
     q = "Sa është komisioni për shlyerje të parakohshme të kredisë në Banka Credins?"

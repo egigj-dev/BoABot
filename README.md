@@ -58,13 +58,18 @@ BoABot is a trustworthy Albanian banking and contact-center assistant. It answer
 
 ## CURRENT STATE / REMAINING WORK
 
-The guarded text and SSE service is implemented; production voice and contact-center operation still require:
+The guarded text and SSE service remains the single answer authority. Two local,
+single-turn browser-microphone development interfaces now exercise it end to end:
+Arm A runs Azure ASR -> `/turn` -> Azure TTS on loopback port `8100`, and Arm B
+runs the Gemini Live-gated bridge on loopback port `8200`, discarding native Live
+answers and rendering only `/turn`-approved text. They are unauthenticated local
+harnesses, not telephony or production media gateways. Production voice and
+contact-center operation still require:
 
-1. A Gemini Live/WebSocket audio bridge connected to the `/turn` contract.
-2. A telephony provider and call-control integration.
-3. Redis-backed sessions, authentication, audit logging, metrics, and agent-queue integration.
-4. A Caddy reverse proxy with HTTPS and a privately bound application service.
-5. Richer evaluation for Albanian ASR noise, interruptions/barge-in, live latency targets, and confirmed live-agent handoff acceptance.
+1. A telephony provider, production streaming-media bridge, and call-control integration around the guarded `/turn` contract.
+2. Redis-backed sessions, authentication, audit logging, metrics, and agent-queue integration.
+3. A Caddy reverse proxy with HTTPS and a privately bound application service.
+4. Richer evaluation for Albanian ASR noise, interruptions/barge-in, live latency targets, and confirmed live-agent handoff acceptance.
 
 ## REPOSITORY MAP
 

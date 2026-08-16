@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="sq">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BoABot</title>
+<style>
+/* paper/card/ink/rule = surfaces; live = mic open; ok/route/stop = outcome */
+:root{
+  --paper:#eaedf0; --card:#fff; --ink:#13171c; --muted:#69727e; --rule:#d9dee4;
+  --live:#a83a2c; --ok:#1c6a55; --route:#8a6208;
+  --accent:#17607a; --accent-dk:#0f4a5e; --tint:rgba(23,96,122,.07);
+  --lift:0 1px 2px rgba(19,23,28,.045), 0 10px 24px -14px rgba(19,23,28,.22);
+  --serif:ui-serif,Georgia,serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--ink);
+  background:radial-gradient(90% 40% at 50% 0%, var(--tint), transparent 70%), var(--paper);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+main{width:min(720px,100% - 32px);margin-inline:auto;padding:28px 0 56px}
+h1{margin:0 0 20px;font-size:18px;font-weight:700;letter-spacing:-.02em;
+  display:flex;align-items:center;gap:9px}
+.mark{width:23px;height:23px;border-radius:7px;display:grid;place-items:center;
+  font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0;
+  background:var(--accent);color:#fff;border:1px solid var(--accent)}
+.mark.hollow{background:transparent;color:var(--accent)}
+
+.deck{display:flex;align-items:center;gap:12px;background:var(--card);
+  border:1px solid var(--rule);border-radius:14px;padding:14px;box-shadow:var(--lift)}
+button{font:inherit;border:1px solid var(--rule);background:var(--card);color:var(--ink);
+  cursor:pointer;display:grid;place-items:center}
+button{transition:border-color .15s,background .15s,transform .1s}
+button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+button:active:not(:disabled){transform:translateY(1px)}
+button:disabled{opacity:.35;cursor:not-allowed}
+button svg{width:20px;height:20px}
+.mic{flex:none;width:52px;height:52px;border-radius:50%}
+.mic svg{width:22px;height:22px}
+.live .mic{background:var(--live);border-color:var(--live);color:#fff}
+.live .mic:hover{border-color:var(--live);color:#fff}
+.act{flex:none;width:40px;height:40px;border-radius:10px}
+.act.send{background:var(--accent);border-color:var(--accent);color:#fff}
+.act.send:hover:not(:disabled){background:var(--accent-dk);border-color:var(--accent-dk);color:#fff}
+.meter{flex:1;display:flex;align-items:flex-end;gap:2px;height:36px;min-width:0}
+.meter i{flex:1;height:2px;background:var(--rule);border-radius:1px;transition:height .09s linear}
+.live .meter i{background:#c9a6a0}
+.clock{flex:none;font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.live .clock{color:var(--live)}
+.err{margin-top:10px;font-size:13px;color:var(--live)}
+.err:empty{display:none}
+
+.log{margin-top:14px;display:grid;gap:12px}
+.turn{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:18px;box-shadow:var(--lift);
+  animation:rise .25s ease-out}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+.head{display:flex;align-items:center;gap:10px;margin-bottom:14px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted)}
+.head .line{flex:1;height:1px;background:var(--rule)}
+.tag{padding:3px 8px;border-radius:999px;border:1px solid currentColor;color:var(--ok);font-size:10px;text-transform:uppercase}
+.tag.route{color:var(--route)}
+.tag.stop{color:var(--live)}
+.said{font-family:var(--serif);font-size:18px;margin:0 0 12px;padding-left:13px;border-left:3px solid var(--accent)}
+.answer{font-family:var(--serif);font-size:16px;line-height:1.6;white-space:pre-wrap;margin:0 0 14px}
+audio{width:100%;height:34px;margin-bottom:14px}
+.cites{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.cites a,.cites span{font-family:var(--mono);font-size:11px;padding:4px 8px;
+  border:1px solid var(--rule);border-radius:7px;color:#2a3038;text-decoration:none}
+.cites a:hover{border-color:var(--accent);color:var(--accent)}
+.ribbon{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--rule)}
+.ribbon i{min-width:2px;box-shadow:inset -1px 0 0 rgba(255,255,255,.55)}
+.ribbon i:last-child{box-shadow:none}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="mark solid">A</span>BoABot</h1>
+
+  <div class="deck" id="deck">
+    <button class="mic" id="rec" type="button" aria-label="Regjistro">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 10.5a6.5 6.5 0 0 0 13 0M12 17v4.5M8.5 21.5h7"/>
+      </svg>
+    </button>
+    <div class="meter" id="meter" aria-hidden="true"></div>
+    <div class="clock" id="clock">0.0s</div>
+    <button class="act send" id="send" type="button" disabled aria-label="Dërgo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 19V5M6 11l6-6 6 6"/>
+      </svg>
+    </button>
+    <button class="act" id="cancel" type="button" disabled aria-label="Anulo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
+    </button>
+  </div>
+  <div class="err" id="err" role="status" aria-live="polite"></div>
+
+  <section class="log" id="log"></section>
+</main>
+
+<script>
+/* frames = captured PCM blocks; levels = rolling RMS per meter bar;
+   stageInk = stage name -> ribbon colour, fixed on first sighting */
+const $ = id => document.getElementById(id);
+const recBtn = $('rec'), sendBtn = $('send'), cancelBtn = $('cancel');
+const deck = $('deck'), meter = $('meter'), clock = $('clock'), err = $('err'), log = $('log');
+
+const BARS = 32, LIMIT_MS = 30000;
+const INKS = ['#2f5d8a','#4a8f7b','#b07a2e','#855a7c','#5b6b7a','#a4553f'];
+const OUTCOME = {answer:['answer',''], clarify:['sqarim','route'], unsupported:['pa mbulim','route'],
+                 handoff:['operator','stop'], repeat:['përsërit','route']};
+const stageInk = new Map();
+
+let ctx, stream, src, proc, sink, frames = [], levels = new Array(BARS).fill(0);
+let recording = false, busy = false, t0 = 0, tick, cap, turnNo = 0;
+
+for (let i = 0; i < BARS; i++) meter.append(document.createElement('i'));
+const bars = [...meter.children];
+
+const fail = m => { err.textContent = m || ''; };
+const inkFor = k => { if (!stageInk.has(k)) stageInk.set(k, INKS[stageInk.size % INKS.length]); return stageInk.get(k); };
+const isTotal = k => /^(total|turn|e2e|end_to_end)(_ms)?$/i.test(k);
+const httpOnly = u => { try { const p = new URL(u); return /^https?:$/.test(p.protocol) ? p.href : null; } catch { return null; } };
+
+function setLive(on){
+  recording = on;
+  deck.classList.toggle('live', on);
+  recBtn.disabled = on || busy;
+  sendBtn.disabled = !on;
+  cancelBtn.disabled = !on;
+}
+function resetMeter(){ levels = new Array(BARS).fill(0); bars.forEach(b => b.style.height = '2px'); }
+function teardown(){
+  clearInterval(tick); clearTimeout(cap);
+  proc?.disconnect(); src?.disconnect(); sink?.disconnect();
+  stream?.getTracks().forEach(t => t.stop());
+  proc = src = sink = stream = null;
+}
+function idle(){ busy = false; recBtn.disabled = false; clock.textContent = '0.0s'; resetMeter(); }
+
+async function start(){
+  if (recording || busy) return;
+  fail();
+  if (!navigator.mediaDevices?.getUserMedia) return fail('Mikrofoni kërkon localhost ose HTTPS.');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,
+      echoCancellation:true, noiseSuppression:true, autoGainControl:true}});
+    ctx = new AudioContext();
+    src = ctx.createMediaStreamSource(stream);
+    proc = ctx.createScriptProcessor(4096, 1, 1);
+    sink = ctx.createGain(); sink.gain.value = 0;
+    frames = [];
+    proc.onaudioprocess = e => {
+      if (!recording) return;
+      const b = e.inputBuffer.getChannelData(0);
+      frames.push(new Float32Array(b));
+      let s = 0; for (let i = 0; i < b.length; i++) s += b[i] * b[i];
+      levels.push(Math.min(1, Math.sqrt(s / b.length) * 7)); levels.shift();
+      bars.forEach((bar, i) => bar.style.height = (2 + levels[i] * 32).toFixed(1) + 'px');
+    };
+    src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+    t0 = performance.now();
+    setLive(true);
+    tick = setInterval(() => clock.textContent = ((performance.now() - t0) / 1000).toFixed(1) + 's', 100);
+    cap = setTimeout(send, LIMIT_MS);
+  } catch (e){ teardown(); setLive(false); fail('Mikrofoni nuk u hap: ' + e.message); }
+}
+
+function merge(parts){
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0; for (const p of parts){ out.set(p, at); at += p.length; }
+  return out;
+}
+async function to16k(s, rate){
+  if (rate === 16000) return s;
+  const off = new OfflineAudioContext(1, Math.ceil(s.length * 16000 / rate), 16000);
+  const buf = off.createBuffer(1, s.length, rate); buf.copyToChannel(s, 0);
+  const n = off.createBufferSource(); n.buffer = buf; n.connect(off.destination); n.start();
+  return new Float32Array((await off.startRendering()).getChannelData(0));
+}
+function toWav(s){
+  const buf = new ArrayBuffer(44 + s.length * 2), v = new DataView(buf);
+  const tag = (at, t) => [...t].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  tag(0,'RIFF'); v.setUint32(4, 36 + s.length * 2, true); tag(8,'WAVE');
+  tag(12,'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 16000, true); v.setUint32(28, 32000, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  tag(36,'data'); v.setUint32(40, s.length * 2, true);
+  let at = 44;
+  for (const x of s){ const c = Math.max(-1, Math.min(1, x)); v.setInt16(at, c < 0 ? c * 0x8000 : c * 0x7fff, true); at += 2; }
+  return new Blob([buf], {type:'audio/wav'});
+}
+
+async function send(){
+  if (!recording) return;
+  const rate = ctx.sampleRate;
+  setLive(false); teardown(); await ctx.close();
+  const pcm = merge(frames);
+  if (pcm.length < rate / 5){ idle(); return fail('Regjistrimi ishte shumë i shkurtër.'); }
+  busy = true; recBtn.disabled = true; fail();
+  try {
+    const res = await fetch('/api/turn', {method:'POST', headers:{'Content-Type':'audio/wav'}, body: toWav(await to16k(pcm, rate))});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'HTTP ' + res.status);
+    render(data);
+  } catch (e){ fail('Turni dështoi: ' + e.message); }
+  finally { idle(); }
+}
+
+function cancel(){
+  if (!recording) return;
+  setLive(false); teardown(); ctx?.close();
+  frames = []; idle(); fail();
+}
+
+function render(r){
+  turnNo++;
+  const all = Object.entries(r.stage_latency_ms || {}).filter(([, v]) => v != null);
+  const stages = all.filter(([k, v]) => !isTotal(k) && v > 0);
+  const explicit = all.find(([k]) => isTotal(k));
+  const total = explicit ? explicit[1] : stages.reduce((n, [, v]) => n + v, 0);
+  const [label, kind] = OUTCOME[r.outcome] || [r.outcome || '?', 'route'];
+
+  const card = document.createElement('article');
+  card.className = 'turn';
+
+  const head = document.createElement('div');
+  head.className = 'head';
+  head.innerHTML = `<span>${String(turnNo).padStart(2,'0')}</span><span class="line"></span>
+    <span class="tag ${r.handoff && kind !== 'stop' ? 'stop' : kind}"></span>
+    <span>${total ? Math.round(total) + ' ms' : ''}</span>`;
+  head.querySelector('.tag').textContent = label;
+  card.append(head);
+
+  const said = document.createElement('p');
+  said.className = 'said'; said.textContent = r.transcript || '—';
+  card.append(said);
+
+  const answer = document.createElement('p');
+  answer.className = 'answer'; answer.textContent = r.answer_text || '—';
+  card.append(answer);
+
+  if (r.audio){
+    const a = document.createElement('audio');
+    a.controls = true;
+    a.src = 'data:' + r.audio.mime_type + ';base64,' + r.audio.data_base64;
+    a.addEventListener('play', () => document.querySelectorAll('audio').forEach(o => { if (o !== a) o.pause(); }));
+    card.append(a);
+    a.play().catch(() => {});
+  }
+
+  if (r.sources?.length){
+    const box = document.createElement('div');
+    box.className = 'cites';
+    for (const s of r.sources){
+      const href = httpOnly(s.url);
+      const n = document.createElement(href ? 'a' : 'span');
+      if (href){ n.href = href; n.target = '_blank'; n.rel = 'noopener noreferrer'; }
+      n.textContent = s.doc + (s.article ? ' · ' + s.article : '');
+      box.append(n);
+    }
+    card.append(box);
+  }
+
+  if (stages.length){
+    const ribbon = document.createElement('div');
+    ribbon.className = 'ribbon';
+    for (const [k, v] of stages){
+      const seg = document.createElement('i');
+      seg.style.cssText = `flex:${v};background:${inkFor(k)}`;
+      seg.title = `${k.replace(/_/g,' ')} · ${Math.round(v)} ms`;
+      ribbon.append(seg);
+    }
+    card.append(ribbon);
+  }
+
+  log.prepend(card);
+}
+
+recBtn.addEventListener('click', start);
+sendBtn.addEventListener('click', send);
+cancelBtn.addEventListener('click', cancel);
+addEventListener('keydown', e => { if (e.key === 'Escape') cancel(); });
+</script>
+</body>
+</html>

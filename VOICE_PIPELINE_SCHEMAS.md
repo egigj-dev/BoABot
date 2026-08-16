@@ -25,6 +25,62 @@ Evidence labels used in every latency table are:
 
 The existing first-sentence measurements start when `/turn` is submitted. They exclude VAD, ASR finalization, speech-provider transport, actual TTS, codec conversion, jitter buffering, and telephony playback. Adding p50 or p95 stage values is a budget allocation, not a statistically valid prediction of the end-to-end percentile. No schema can claim the voice SLO until the complete correlated distribution is measured.
 
+## Implementation status (2026-08-14)
+
+The production schemas and their **[M]**/**[P]** qualification work below remain
+in scope, but the current working tree now contains one real local implementation
+of each guarded family. These are browser-microphone development harnesses, not
+telephony or production media gateways:
+
+- **[R] Arm A implements the Schema 1 guarded modular path.**
+  `voice.web_app:app` on loopback port `8100` accepts one browser-recorded 16 kHz,
+  16-bit, mono PCM WAV and calls the same real `voice.cli.live_run.run_single()`
+  cascade as the CLI: Azure `sq-AL` ASR -> guarded `POST /turn` -> Azure TTS.
+  `api.py` buffers model tokens into complete sentences and runs the fail-closed
+  `FidelityGuard` before emitting `approved_sentence`; only those server-approved
+  sentences enter correlated TTS. The web response is returned after the turn
+  completes and contains public source metadata, never raw evidence passages.
+- **[R] Arm B implements the Schema 2 constrained Gemini Live bridge.**
+  `voice.web_app_b:app` on loopback port `8200` drives `LiveTurnBridge`: one Live
+  session transcribes the caller, every finalized transcript is sent to `/turn`,
+  and every native answer from that input session is counted in
+  `native_response_dropped_events`/`native_response_dropped_bytes` and discarded.
+  A separate constrained Live session receives only the complete approved
+  `/turn` text; it receives no raw hits or passages. Native-response dropping,
+  the restricted render context, and correlated output gating enforce the answer
+  source boundary; approved-versus-spoken transcript fields expose renderer
+  fidelity for audit. Handoff/unsupported outcomes emit no answer audio.
+- **[R] The Azure confidence probe found no usable per-word confidence signal.**
+  `voice.cli.probe_confidence` and commit `b312e82` recorded the constant value
+  `0.78952557` across clean, noisy, silence, and degraded inputs. The critical-span
+  threshold is therefore skippable only through the explicit
+  `VOICE_CONFIDENCE_CRITICAL_DISABLED=1` opt-in, and every bypassed turn records
+  `critical-span gate bypassed: provider confidence proven constant`. Without the
+  opt-in, a bank/number/currency/percent span lacking confidence safely clarifies;
+  the `0.75`/`0.85`/`0.55` thresholds remain unchanged.
+- **[R] Sentence fidelity is now enforced at the `/turn` boundary.**
+  `voice.sentence_buffer` preserves decimal fragments split across provider
+  tokens, and `voice.fidelity_guard` can only suppress output; it cannot approve
+  evidence or alter `trusted_hits()`. Its locale-aware number parser treats
+  Albanian dot-thousands forms such as `10.000` and `1.000.000` without changing
+  ordinary provider decimals such as `4.75`. Entity comparison folds only known
+  Albanian head forms such as `bankës`/`bankën` -> `banka`, while
+  `ENTITY_HEAD_FORMS`, `LABEL_TOKEN_FORMS`, and `LABEL_STOPWORDS` retain
+  distinguishing bank/product labels. Commit `5883e44` and the current
+  `test_fidelity_label_subset.py`, `test_entity_inflection.py`,
+  `test_claim_rows.py`, and `test_sentence_fidelity.py` cover the wrong-label and
+  inflection regressions.
+
+These **[R]** entries establish implemented local control flow, not a measured
+production voice SLO. Both web servers are single-turn, loopback-only,
+unauthenticated, and return answer audio only after the request completes;
+telephony codecs, streaming browser playback, production authentication, and
+real call transfer remain **[P]** work. The component maps below preserve the
+production design baseline as written on 2026-08-11; where they call an Arm A/B
+component "genuinely new" or say that no Live call exists, this dated status
+section supersedes that implementation claim, while their production-gap and
+latency-evidence classifications remain unchanged.
+
 ## Schema 1 - Guarded modular near-real-time
 
 ### 1. Purpose and when it wins

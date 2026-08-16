@@ -85,7 +85,7 @@ def _synthesize(path: Path, text: str, settings: VoiceSettings) -> None:
     )
     result = synthesizer.speak_text_async(text).get()
     if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
-        details = speechsdk.SpeechSynthesisCancellationDetails.from_result(result)
+        details = speechsdk.SpeechSynthesisCancellationDetails(result)
         raise RuntimeError(
             f"Azure TTS failed for {text!r}: reason={result.reason}; "
             f"cancellation_reason={details.reason}; error_code={details.error_code}; "
@@ -111,12 +111,13 @@ def _recognize(name: str, path: Path, settings: VoiceSettings) -> ProbeResult:
     grammar = speechsdk.PhraseListGrammar.from_recognizer(recognizer)
     for phrase in build_phrase_list():
         grammar.addPhrase(phrase)
+    grammar.setWeight(2.0)
     result = recognizer.recognize_once_async().get()
     if result.reason == speechsdk.ResultReason.Canceled:
-        details = speechsdk.CancellationDetails.from_result(result)
+        details = speechsdk.CancellationDetails(result)
         raise RuntimeError(
             f"Azure ASR canceled for {name}: reason={details.reason}; "
-            f"error_code={details.error_code}; details={details.error_details}"
+            f"error_code={details.code}; details={details.error_details}"
         )
     if result.reason not in {
         speechsdk.ResultReason.RecognizedSpeech,

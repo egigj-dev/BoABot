@@ -8,6 +8,21 @@ This report evaluates `pipelineA`, `pipelineB`, `pipelineC`, and `Shared_RAG_Arc
 
 Repository evidence was taken from the current code and artifacts. Provider capability statements are limited to official documentation checked on the date above. A provider listing Albanian as supported establishes API availability, not accuracy on Albanian banking terms, telephone audio, names, figures, dialects, or noisy calls.
 
+## Implementation status update (2026-08-14)
+
+The voice work now has two real local, single-turn browser-microphone
+implementations around the guarded text authority. Arm A exercises the modular
+Azure STT -> `POST /turn` -> Azure TTS path on loopback port `8100`. Arm B
+exercises the constrained Gemini Live redesign on loopback port `8200`: Live
+transcribes, `/turn` remains the only answer authority, native Live answers are
+counted and discarded, and a separate constrained Live session renders only the
+approved text. In the historical labels below, Arm A realizes Pipeline A while
+Arm B realizes the constrained redesign of Pipeline C/Schema 2; it is not the
+Google Chirp comparison called Pipeline B in this report. Both are development
+harnesses that return audio after a completed turn, not telephony or production
+media gateways. The provider qualification, streaming media, call-control,
+authentication, and production operations findings below still apply.
+
 ## Implemented baseline and invariant
 
 The current service is text-only:

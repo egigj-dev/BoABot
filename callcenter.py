@@ -6,6 +6,7 @@ import json
 import re
 import threading
 import time
+import unicodedata
 import uuid
 import zlib
 from dataclasses import dataclass
@@ -15,7 +16,8 @@ from pathlib import Path
 import numpy as np
 
 from retrieve import model
-from trust import (BUSINESS_DEPOSIT_MESSAGE, UNSAFE_INPUT_MESSAGE, input_gate,
+from trust import (BUSINESS_DEPOSIT_MESSAGE, NO_EVIDENCE_MESSAGE,
+                   UNSAFE_INPUT_MESSAGE, input_gate,
                    is_business_deposit_question)
 
 MAX_HISTORY_MESSAGES = 12
@@ -25,6 +27,10 @@ MAX_SESSIONS = 1_000
 CLARIFY_MESSAGE = (
     "Mund ta sqaroni pak pyetjen? Për shembull, tregoni bankën, produktin "
     "ose rregulloren për të cilën po pyesni."
+)
+CARD_CLARIFY_MESSAGE = (
+    "Ju lutem specifikoni nëse karta është debiti apo krediti dhe nëse është "
+    "për individ apo biznes."
 )
 HANDOFF_MESSAGE = (
     "Për sigurinë tuaj, kjo kërkesë duhet të trajtohet nga një agjent njerëzor. "
@@ -100,7 +106,7 @@ sessions = SessionStore()
 
 # Fast-path only credential disclosures or active access incidents; general PIN/CVV questions use semantic routing.
 _SECRET_FAST_RE = re.compile(
-    r"(?:\b(?:pin|cvv|cvc|otp)\b.{0,80}\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|tregova|"
+    r"(?:\b(?:pin|cvv|cvc|otp)\b.{0,80}\b(?:zbulu|kompromet|vjedh|dha|ndava|tregova|"
     r"kerk|doli|nuk funksion)|\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|tregova|kerk|doli|"
     r"nuk funksion).{0,80}\b(?:pin|cvv|cvc|otp)\b)", re.I)
 
@@ -124,11 +130,69 @@ def _redact_pii(text: str) -> tuple[str, bool]:
     return redacted, redacted != text
 
 def _is_repeat(text: str) -> bool:
-    lowered = text.casefold()
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    lowered = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
     return any(term in lowered for term in (
-        "përsërite", "perserite", "ma përsërit", "ma perserit",
-        "nuk dëgjova", "nuk degjova", "thuaje prap", "repeat",
+        "perserite", "ma perserit", "perserit pergjigjen",
+        "ma thuaj edhe nje here", "nuk degjova", "thuaje prap", "repeat",
     ))
+
+
+def _needs_missing_context_clarification(text: str, history: list[dict[str, str]]) -> bool:
+    if history:
+        return False
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    folded = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return any(term in folded for term in ("kjo rregullore", "kete rregullore"))
+
+
+def _is_explicitly_unsupported(text: str) -> bool:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    folded = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return (
+        "banka me e mire" in folded
+        or "deklaroj qirane" in folded
+        or "tatimet" in folded
+    )
+
+
+def _is_public_pricing_question(text: str) -> bool:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    folded = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    has_price_intent = any(term in folded for term in (
+        "sa eshte", "sa kushton", "cfare perqind", "cfare norme",
+        "komision", "tarife", "norme interesi",
+    ))
+    has_public_product = any(term in folded for term in (
+        "bank", "karte", "kredi", "depozit",
+    ))
+    return has_price_intent and has_public_product
+
+
+def _is_contextual_public_pricing_question(
+    text: str, history: list[dict[str, str]]
+) -> bool:
+    if _is_public_pricing_question(text):
+        return True
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    folded = "".join(ch for ch in decomposed if not unicodedata.combining(ch)).strip()
+    if not re.match(r"^(?:po|dhe|kurse)\b", folded):
+        return False
+    return any(
+        message.get("role") == "user"
+        and _is_public_pricing_question(message.get("content", ""))
+        for message in history[-4:]
+    )
+
+
+def is_ambiguous_card_maintenance(text: str) -> bool:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    folded = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    if "kart" not in folded or "mirembajt" not in folded:
+        return False
+    card_types = sum(term in folded for term in ("debit", "kredit"))
+    customer_segments = sum(term in folded for term in ("individ", "biznes"))
+    return card_types != 1 or customer_segments != 1
 
 def _encode_question(question: str) -> np.ndarray:
     """Sole callcenter embedding entry point: exactly one normalized encode per routed turn."""
@@ -155,7 +219,18 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]]) -> De
         return Decision(Outcome.REPEAT, last_answer or REPEAT_MESSAGE)
 
     if _SECRET_FAST_RE.search(question):
-        return Decision(Outcome.HANDOFF, HANDOFF_MESSAGE, handoff=True)
+        # The raw credential-bearing text is deliberately not copied into the
+        # decision/session history; expose that redaction happened in telemetry.
+        return Decision(Outcome.HANDOFF, HANDOFF_MESSAGE, handoff=True, pii_redacted=True)
+
+    if _needs_missing_context_clarification(question, history):
+        return Decision(Outcome.CLARIFY, CLARIFY_MESSAGE)
+
+    if _is_explicitly_unsupported(question):
+        return Decision(Outcome.UNSUPPORTED, NO_EVIDENCE_MESSAGE)
+
+    if is_ambiguous_card_maintenance(question):
+        return Decision(Outcome.CLARIFY, CARD_CLARIFY_MESSAGE, question=question)
 
     if is_business_deposit_question(question, history):
         return Decision(Outcome.UNSUPPORTED, BUSINESS_DEPOSIT_MESSAGE)
@@ -169,7 +244,9 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]]) -> De
 
     query_embedding = _encode_question(clean_question)
     handoff_score = _probe_score(query_embedding)
-    if handoff_score >= _HANDOFF_THRESHOLD:
+    if handoff_score >= _HANDOFF_THRESHOLD and not _is_contextual_public_pricing_question(
+        clean_question, history
+    ):
         return Decision(Outcome.HANDOFF, HANDOFF_MESSAGE, handoff=True,
                         query_embedding=query_embedding, handoff_score=handoff_score)
     if len(clean_question.split()) < 3:
@@ -177,4 +254,3 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]]) -> De
                         query_embedding=query_embedding, handoff_score=handoff_score)
     return Decision(None, question=clean_question, query_embedding=query_embedding,
                     handoff_score=handoff_score)
-

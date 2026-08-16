@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import re
 import uuid
 from collections.abc import AsyncIterable, Awaitable, Callable
@@ -31,6 +32,11 @@ SAFETY_TERMS = {"pin", "cvv", "cvc", "otp"}
 AudioSink = Callable[[AudioChunk], Awaitable[None]]
 
 
+def _safety_terms(text: str) -> set[str]:
+    """Return exact credential-safety words, never substrings of Albanian words."""
+    return set(re.findall(r"[^\W_]+", text.casefold())) & SAFETY_TERMS
+
+
 class ConfidenceAction(str, Enum):
     PROCEED = "proceed"
     CLARIFY = "clarify"
@@ -53,10 +59,15 @@ class ConfidencePolicy:
     failed_clarifications: int = 0
 
     def evaluate(self, transcript: Transcript) -> ConfidenceDecision:
-        folded = transcript.text.casefold()
-        alternative_terms = {term for alternative in transcript.alternatives
-                             for term in SAFETY_TERMS if term in alternative.casefold()}
-        primary_terms = {term for term in SAFETY_TERMS if term in folded}
+        # probe_confidence.py proves this provider confidence is constant, so the bypass is explicit.
+        critical_disabled = os.getenv("VOICE_CONFIDENCE_CRITICAL_DISABLED", "").casefold() in {
+            "1", "true", "yes", "on",
+        }
+        alternative_terms = {
+            term for alternative in transcript.alternatives
+            for term in _safety_terms(alternative)
+        }
+        primary_terms = _safety_terms(transcript.text)
         if alternative_terms != primary_terms and (alternative_terms or primary_terms):
             return ConfidenceDecision(ConfidenceAction.HANDOFF, "safety-keyword ambiguity")
         if transcript.confidence is None:
@@ -64,7 +75,7 @@ class ConfidencePolicy:
         if transcript.confidence < self.handoff:
             return ConfidenceDecision(ConfidenceAction.HANDOFF, "overall confidence below handoff threshold")
         critical_spans = CRITICAL_RE.findall(transcript.text)
-        if critical_spans:
+        if critical_spans and not critical_disabled:
             if not transcript.critical_confidences:
                 return ConfidenceDecision(ConfidenceAction.CLARIFY, "critical-span confidence unavailable")
             if any(transcript.critical_confidences.get(span, 0.0) < self.critical for span in critical_spans):
@@ -75,7 +86,11 @@ class ConfidencePolicy:
                 return ConfidenceDecision(ConfidenceAction.CLARIFY, "conflicting critical alternative")
         if transcript.confidence < self.proceed:
             return ConfidenceDecision(ConfidenceAction.CLARIFY, "overall confidence below proceed threshold")
-        return ConfidenceDecision(ConfidenceAction.PROCEED, "accepted")
+        reason = (
+            "critical-span gate bypassed: provider confidence proven constant"
+            if critical_disabled else "accepted"
+        )
+        return ConfidenceDecision(ConfidenceAction.PROCEED, reason)
 
     def record(self, decision: ConfidenceDecision, server_outcome: str) -> None:
         if decision.action is ConfidenceAction.CLARIFY and server_outcome == "clarify":

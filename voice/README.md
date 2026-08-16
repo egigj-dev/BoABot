@@ -1,10 +1,12 @@
 # BoABot guarded voice pipelines
 
-This package implements the two designs in `VOICE_PIPELINE_SCHEMAS.md` without
-changing the existing text service. In both designs, the only business-answer
-authority is HTTP `POST /turn`. Speech-provider answers, ASR partials, SSE
-`tool` events, retrieval passages, locally written fallback prose, and stale
-audio are never caller output.
+This package implements the guarded components in `VOICE_PIPELINE_SCHEMAS.md`
+without creating a second business-answer authority. HTTP `POST /turn` remains
+the single authority: speech-provider answers, ASR partials, SSE `tool` events,
+retrieval passages, locally written fallback prose, and stale audio are never
+caller output. Two real local, single-turn browser-microphone harnesses are
+available: Arm A for Schema 1 and Arm B for Schema 2. Neither is a telephony or
+production media gateway.
 
 The package imports and its offline suite run with no cloud SDK, credentials,
 database, model, or audio device. Provider SDKs load only when a real adapter is
@@ -30,9 +32,22 @@ first-approved-sentence to first-audio latency, and injects a malicious native
 Live answer to demonstrate that its bytes are counted and dropped. The bake-off
 prints a stable Azure/Chirp table skeleton when real providers are unconfigured.
 
+## Implemented local status
+
+| Interface | Real local path | Server | Current boundary |
+|---|---|---|---|
+| Arm A | Browser PCM WAV -> Azure `sq-AL` ASR -> guarded `POST /turn` -> Azure TTS | `voice.web_app:app`, loopback port `8100` | One recorded turn; completed answer WAV returned in the HTTP result |
+| Arm B | Browser PCM WAV -> Gemini Live transcription -> guarded `POST /turn` -> second constrained Gemini Live rendering session | `voice.web_app_b:app`, loopback port `8200` | One recorded turn; native input-session answers are counted/dropped and the completed gated WAV is returned |
+
+Both depend on `api:app` at the configured `BOABOT_TURN_BASE_URL` (port `8000`
+by default). The browser layers return public source metadata only. Arm A's
+backend may request vetted passage text inside the trusted `/turn` boundary for
+defensive fidelity checking, while Arm B requests no passage text and exposes
+none to either Gemini Live session.
+
 ## Trust path and vetted evidence
 
-The production path is:
+The guarded answer path is:
 
 ```text
 final transcript -> HTTP POST /turn -> server-approved sentence -> streaming TTS
@@ -94,9 +109,16 @@ server extension can later accept the diagnostics without weakening this rule.
 - `schema1.py`: modular VAD/ASR -> `/turn` -> verified TTS orchestration and a
   discard-only speculative warmer stub that issues no requests.
 - `schema2.py`: input-only Gemini Live transcription transport, unconditional
-  native-response sink, streaming Azure rendering, per-utterance milestone
+  native-response sink, guarded rendering policy, per-utterance milestone
   latency, and a correlated output gate. Live state is transport-only; BoABot
   `session_id` remains authoritative.
+- `live_bridge.py`: Arm B's real two-session Live path. The first session
+  transcribes and has every native response counted and discarded; the second
+  receives only complete `/turn`-approved text and returns correlated audio.
+- `web_app.py`, `arm_a.html`: loopback Arm A microphone UI around the real
+  `voice.cli.live_run.run_single()` Azure cascade.
+- `web_app_b.py`, `arm_b.html`: loopback Arm B microphone UI around
+  `LiveTurnBridge`, including public fidelity and native-drop audit fields.
 - `cli/`: two offline traces and the recorded-audio bake-off scaffold.
 - `tests/`: fast offline smoke and trust-invariant coverage.
 
@@ -114,6 +136,7 @@ not errors until their corresponding real adapter is selected.
 | `VOICE_CONFIDENCE_PROCEED` | `0.75` | Calibrated utterance proceed threshold |
 | `VOICE_CONFIDENCE_CRITICAL` | `0.85` | Bank/number/currency/percent span threshold |
 | `VOICE_CONFIDENCE_HANDOFF` | `0.55` | Overall confidence handoff threshold |
+| `VOICE_CONFIDENCE_CRITICAL_DISABLED` | unset | Set to `1` only after `voice.cli.probe_confidence` proves the selected ASR provider returns constant confidence and cannot supply meaningful critical-span scores; the audit reason records every bypassed turn |
 | `VOICE_PCM_SAMPLE_RATE_HZ` | `16000` | PCM sample rate fed to ASR/TTS; used by the Chirp adapter's explicit LINEAR16 decoding config. Must match the 16 kHz mono PCM the bridge supplies (8 kHz telephony later). |
 | `VOICE_LATENCY_P50_TARGET_MS` | `1500` | Measurement target, not an achieved SLO |
 | `VOICE_LATENCY_P95_TARGET_MS` | `2500` | Measurement target, not an achieved SLO |
@@ -142,19 +165,22 @@ Google Application Default Credentials must also be available to the Cloud
 Speech client. Chirp 3 Albanian is Preview and must not be the only production
 route until qualified.
 
-### Schema 2: constrained Gemini Live plus Azure fallback
+### Schema 2: constrained Gemini Live and optional Azure fallback components
 
 | Variable | Required when | Meaning |
 |---|---|---|
-| `GEMINI_API_KEY` | Gemini Live input | Server-owned Gemini Live credential |
-| `GEMINI_LIVE_MODEL` | Gemini Live input | Version-pinned Live model name |
-| `AZURE_TTS_KEY` | fallback rendering | Azure key (or `AZURE_SPEECH_KEY`) |
-| `AZURE_TTS_REGION` | fallback rendering | Azure region (or `AZURE_SPEECH_REGION`) |
-| `AZURE_TTS_VOICE` | fallback rendering | One qualified voice for the entire answer |
+| `GEMINI_API_KEY` | Arm B / Gemini Live input | Server-owned Gemini Live credential |
+| `GEMINI_LIVE_MODEL` | Arm B / Gemini Live input | Configured Live model name; code default `gemini-3.1-flash-live-preview` |
+| `AZURE_TTS_KEY` | Schema 2 Azure fallback components | Azure key (or `AZURE_SPEECH_KEY`) |
+| `AZURE_TTS_REGION` | Schema 2 Azure fallback components | Azure region (or `AZURE_SPEECH_REGION`) |
+| `AZURE_TTS_VOICE` | Schema 2 Azure fallback components | One qualified voice for the entire answer |
 
-Gemini Live native output is never a fallback. Until literal rendering and
-request correlation are qualified, every turn uses Azure TTS. Entity/figure
-turns continue to use Azure even after an optional literal renderer qualifies.
+Gemini Live output produced while transcribing caller audio is never an answer
+or a fallback: it is counted and discarded. The local Arm B harness uses a
+separate, zero-temperature constrained Live session whose only input context is
+the complete approved `/turn` text. The general `schema2.py` orchestration also
+retains an Azure TTS fallback policy for production qualification; Arm B does
+not exercise that fallback.
 
 ## Live preparation and smoke
 
@@ -183,22 +209,80 @@ or set Google Application Default Credentials and use
 .venv/bin/python -m voice.cli.schema2_demo --live
 ```
 
-These flags intentionally stop after validation because this repository has no
-selected microphone, WebRTC/SIP media gateway, or telephony provider. A live
-deployment supplies `AsyncIterable[bytes]` 16 kHz PCM frames to the selected ASR
-or Live manager and an `AudioSink` that accepts only gated `AudioChunk` objects.
+These CLI demo flags intentionally stop after provider validation. The local
+browser harnesses below now supply a selected microphone path, but the repository
+still has no WebRTC/SIP media gateway or telephony provider. A production
+deployment must supply authenticated streaming media, call control, and an
+`AudioSink` that accepts only gated `AudioChunk` objects.
+
+## Local Arm A browser microphone
+
+For a graphical, turn-based interface, keep `api:app` running on port 8000 and
+start the local microphone app in a second terminal:
+
+```bash
+set -a; source .env; set +a
+.venv/bin/python -m uvicorn voice.web_app:app --host 127.0.0.1 --port 8100
+```
+
+The recorded Azure diagnostics found the same confidence value (`0.78952557`)
+across clean, noisy, silence, and degraded inputs, so there is no meaningful
+per-word signal for the critical-span gate. Export
+`VOICE_CONFIDENCE_CRITICAL_DISABLED=1` only as an explicit operational opt-in;
+the per-turn `confidence_reason` then records the bypass. Without the opt-in,
+questions whose transcript contains a bank, number, currency, or percentage
+safely return `clarify` when span confidence is unavailable. The configured
+thresholds are not lowered or silently reinterpreted.
+
+Open `http://127.0.0.1:8100`, allow microphone access, press **Regjistro**, speak
+one question, and press **Ndalo dhe dërgo**. The browser resamples the recording
+to a 16 kHz, 16-bit, mono PCM WAV. The backend runs the same real
+Azure ASR -> `/turn` -> Azure TTS `run_single()` path as `voice.cli.live_run`,
+then returns the transcript, structured outcome, public sources, timings, and a
+playable answer WAV. It never sends raw evidence passages to the browser.
+
+This is a local single-turn development interface, not a telephony or production
+media gateway. Bind it to loopback as shown: it has no authentication, and answer
+audio is returned after the turn completes rather than streamed during synthesis.
+
+## Local Arm B browser microphone
+
+Arm B has its own web server and interface on port `8200`. Keep the same guarded
+`api:app` authority running on port `8000`, then start Arm B separately:
+
+```bash
+set -a; source .env; set +a
+.venv/bin/python -m uvicorn voice.web_app_b:app --host 127.0.0.1 --port 8200
+```
+
+Open `http://127.0.0.1:8200`. The browser records and resamples one question to
+16 kHz mono PCM. Gemini Live transcribes it, `/turn` on port `8000` remains the
+only answer authority, every native Gemini answer is counted and discarded, and
+a second constrained Gemini Live session renders only the approved text. The UI
+shows the input transcript, approved text, spoken transcript, verbatim and
+normalized match results, dropped-native-response counters, public sources,
+stage timings, and the gated answer WAV.
+
+Like Arm A, this service is loopback-only, unauthenticated, single-turn, and
+returns answer audio after the turn completes. Arm B requires `GEMINI_API_KEY`
+and a configured `GEMINI_LIVE_MODEL`; it does not expose retrieved passage text
+to the browser or either Gemini Live session. Handoff/unsupported results return
+no answer audio, while a non-handoff result must contain non-empty PCM before the
+web layer will construct a WAV.
 
 ## Accounts and production decisions checklist
 
 - Azure Speech resource, key, region, and a reviewed Albanian TTS voice.
 - For the comparison route, a billed GCP project, Speech-to-Text V2 API,
   application credentials, regional quota, and approved Chirp 3 Preview use.
-- For Schema 2, a Gemini API project/key with Live Preview access and a pinned
-  model/version policy.
+- For Arm B/Schema 2, a Gemini API project/key with Live access and a pinned
+  model/version policy; retain native-response drop counters and literal-render
+  fidelity auditing as release evidence.
 - Existing OpenRouter key and the existing service's PostgreSQL/pgvector data.
 - Optional Redis endpoint and a deliberate retention/redaction policy.
 - A chosen Twilio/ACS/SIP/WebRTC media and call-control adapter, including real
-  queue entry, transfer rejection, and agent-acceptance observation.
+  streaming playback, queue entry, transfer rejection, and agent-acceptance
+  observation. The local Arm A/B web servers do not satisfy this item.
 - Authentication between media bridge and `/turn`, TLS/reverse proxy, regional
   privacy review, concurrency/soak tests, and consented Albanian call fixtures.
 

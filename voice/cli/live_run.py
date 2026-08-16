@@ -6,7 +6,7 @@ Derived structures used by this module:
 - ``final_transcripts`` contains all final ASR events emitted for one input WAV.
 - ``interim_hypotheses`` contains every Azure interim and its fixture-relative timestamp.
 - ``approved_sentences`` contains server-guarded sentences accepted unchanged for Azure TTS.
-- ``sentence_wavs`` contains complete correlated WAV payloads returned by real Azure TTS.
+- ``sentence_wavs`` contains correlated raw PCM payloads returned by real Azure TTS.
 - ``stage_latency_ms`` maps each required stage name to one measured latency.
 - ``manifest_sources`` contains public citation fields copied from the terminal event.
 - ``manifest`` contains the complete, JSON-serializable audit record for one live turn.
@@ -57,14 +57,6 @@ def _valid_pcm_wav(payload: bytes) -> bool:
         return False
 
 
-def _wav_pcm(payload: bytes) -> bytes:
-    """Extract 16 kHz mono PCM from one complete Azure sentence WAV."""
-    if not _valid_pcm_wav(payload):
-        raise RuntimeError("Azure TTS sentence is not a non-empty 16 kHz mono PCM WAV")
-    with wave.open(io.BytesIO(payload), "rb") as wav:
-        return wav.readframes(wav.getnframes())
-
-
 def _pcm_wav(pcm: bytes) -> bytes:
     output = io.BytesIO()
     with wave.open(output, "wb") as wav:
@@ -73,6 +65,67 @@ def _pcm_wav(pcm: bytes) -> bytes:
         wav.setframerate(16_000)
         wav.writeframes(pcm)
     return output.getvalue()
+
+
+def _combine_final_transcripts(finals: list[Transcript]) -> Transcript:
+    """Combine Azure's per-segment final events into one conservative utterance."""
+    if not finals:
+        raise ValueError("at least one final transcript is required")
+    if len(finals) == 1:
+        return finals[0]
+
+    texts = [item.text.strip() for item in finals if item.text.strip()]
+    if not texts:
+        raise ValueError("final transcripts contain no text")
+    confidences = [item.confidence for item in finals]
+    confidence = (
+        min(value for value in confidences if value is not None)
+        if all(value is not None for value in confidences)
+        else None
+    )
+    critical_confidences: dict[str, float] = {}
+    for item in finals:
+        for span, value in item.critical_confidences.items():
+            critical_confidences[span] = min(
+                value, critical_confidences.get(span, value)
+            )
+
+    # Preserve safety-keyword ambiguity checks by expressing each segment-level
+    # Azure alternative as a full-utterance alternative.
+    alternatives: list[str] = []
+    for index, item in enumerate(finals):
+        for alternative in item.alternatives:
+            candidate = texts.copy()
+            candidate[index] = alternative.strip()
+            joined = " ".join(part for part in candidate if part)
+            if joined and joined not in alternatives:
+                alternatives.append(joined)
+
+    starts = [item.started_s for item in finals if item.started_s is not None]
+    finalized = [item.finalized_s for item in finals if item.finalized_s is not None]
+    return Transcript(
+        text=" ".join(texts),
+        final=True,
+        confidence=confidence,
+        alternatives=tuple(alternatives),
+        critical_confidences=critical_confidences,
+        provider=finals[0].provider,
+        started_s=min(starts) if starts else None,
+        finalized_s=max(finalized) if finalized else None,
+        diagnostics={
+            "segments": [dict(item.diagnostics) for item in finals],
+            "segment_count": len(finals),
+            "raw_text": " ".join(
+                str(item.diagnostics.get("raw_text") or item.text).strip()
+                for item in finals
+            ),
+            "entity_corrections": [
+                correction
+                for item in finals
+                for correction in item.diagnostics.get("entity_corrections", ())
+            ],
+        },
+    )
 
 
 async def _preflight_postgres() -> str:
@@ -141,10 +194,10 @@ async def _preflight_stt(settings: VoiceSettings) -> str:
     push_stream.close()
     result = await asyncio.to_thread(lambda: recognizer.recognize_once_async().get())
     if result.reason == speechsdk.ResultReason.Canceled:
-        details = speechsdk.CancellationDetails.from_result(result)
+        details = speechsdk.CancellationDetails(result)
         raise RuntimeError(
             f"Azure STT canceled: reason={details.reason}; "
-            f"error_code={details.error_code}; details={details.error_details}"
+            f"error_code={details.code}; details={details.error_details}"
         )
     if result.reason not in {speechsdk.ResultReason.RecognizedSpeech, speechsdk.ResultReason.NoMatch}:
         raise RuntimeError(f"Azure STT returned unexpected result reason: {result.reason}")
@@ -163,8 +216,10 @@ async def _preflight_tts(settings: VoiceSettings) -> str:
     payload = await _synthesize_bytes(tts, "Përshëndetje.")
     if not payload:
         raise RuntimeError("Azure TTS returned empty audio")
-    if not _valid_pcm_wav(payload):
-        raise RuntimeError("Azure TTS returned audio without a valid 16 kHz mono PCM WAV header")
+    if len(payload) % 2:
+        raise RuntimeError("Azure TTS returned an incomplete 16-bit PCM sample")
+    if not _valid_pcm_wav(_pcm_wav(payload)):
+        raise RuntimeError("Azure TTS returned invalid 16 kHz mono PCM audio")
     return f"region={settings.azure_tts_region}; voice={settings.azure_tts_voice}; bytes={len(payload)}"
 
 
@@ -226,6 +281,14 @@ async def run_single(
 ) -> dict[str, Any]:
     started = time.perf_counter()
     pcm, duration_s, sample_rate_hz = _read_input_wav(audio_path)
+    input_rms = audioop.rms(pcm, 2)
+    input_peak = audioop.max(pcm, 2)
+    print(
+        "input_audio: "
+        f"duration_s={duration_s:.3f}; rms={input_rms}; peak={input_peak}; "
+        f"rms_full_scale={input_rms / 32768:.5f}; "
+        f"peak_full_scale={input_peak / 32768:.5f}"
+    )
     audio_sha256 = hashlib.sha256(audio_path.read_bytes()).hexdigest()
     asr = AzureStreamingASR(settings)
     tts = AzureTTS(settings)
@@ -270,9 +333,13 @@ async def run_single(
                 ):
                     stable_interim_ms = current_interim_started_ms + 300
                     stable_interim_text = current_interim_text
-    if len(final_transcripts) != 1:
-        raise RuntimeError(f"Azure ASR must return exactly one non-empty final transcript; got {len(final_transcripts)}")
-    transcript = final_transcripts[0]
+    if not final_transcripts:
+        raise RuntimeError(
+            "Azure ASR returned no non-empty final transcript; "
+            f"input duration_s={duration_s:.3f}, "
+            f"rms={input_rms}, peak={input_peak}"
+        )
+    transcript = _combine_final_transcripts(final_transcripts)
     if asr_final_ms is None:
         raise RuntimeError("Azure ASR final latency was not captured")
     stable_before_final_ms = (
@@ -362,6 +429,9 @@ async def run_single(
             "transcript_alternatives": list(transcript.alternatives),
             "transcript_confidence": transcript.confidence,
             "transcript_text": transcript.text,
+            "transcript_raw_text": transcript.diagnostics.get(
+                "raw_text", transcript.text
+            ),
             "tts_provider": "azure",
             "tts_voice": settings.azure_tts_voice,
             "timing_origins": {
@@ -387,6 +457,7 @@ async def run_single(
             f"reason={decision.reason}"
         )
         print("/turn: not called")
+        print("answer: (none; /turn was not called)")
         print(f"run.json: {out_dir / 'run.json'}")
         return manifest
 
@@ -454,7 +525,8 @@ async def run_single(
             sentence_payload = b"".join(sentence_chunks)
             if not sentence_payload:
                 raise RuntimeError("Azure TTS returned no audio for approved sentence")
-            _wav_pcm(sentence_payload)
+            if len(sentence_payload) % 2:
+                raise RuntimeError("Azure TTS returned an incomplete 16-bit PCM sample")
             sentence_wavs.append(sentence_payload)
 
     renderer_task = asyncio.create_task(render_sentences())
@@ -478,6 +550,7 @@ async def run_single(
         raise RuntimeError("/turn returned no answer text for TTS")
     if turn_first_token_ms is None or turn_first_approved_sentence_ms is None:
         raise RuntimeError("/turn stage latency markers are incomplete")
+    # api.py's server-side guard is authoritative; live_run's guard is a defensive client check.
     guard = FidelityGuard()
     for sentence in approved_sentences:
         verdict = guard.verify_sources(sentence, result.done.sources)
@@ -487,7 +560,7 @@ async def run_single(
             if end_to_end_first_audio_ms is not None:
                 guard_failure_after_audio_started = violation
     approved_text = " ".join(approved_sentences)
-    output_audio = _pcm_wav(b"".join(_wav_pcm(payload) for payload in sentence_wavs))
+    output_audio = _pcm_wav(b"".join(sentence_wavs))
     if not output_audio or not _valid_pcm_wav(output_audio):
         raise RuntimeError("Azure TTS answer is not a non-empty 16 kHz mono PCM WAV")
     if tts_first_byte_ms is None or end_to_end_first_audio_ms is None:
@@ -562,6 +635,9 @@ async def run_single(
         "transcript_alternatives": list(transcript.alternatives),
         "transcript_confidence": transcript.confidence,
         "transcript_text": transcript.text,
+        "transcript_raw_text": transcript.diagnostics.get(
+            "raw_text", transcript.text
+        ),
         "tts_provider": "azure",
         "tts_voice": settings.azure_tts_voice,
         "timing_origins": {
@@ -584,6 +660,7 @@ async def run_single(
     print(f"transcript: {transcript.text}")
     print(f"confidence: {transcript.confidence}; action={decision.action.value}; reason={decision.reason}")
     print(f"/turn: outcome={result.done.outcome}; handoff={result.done.handoff}; sources={len(result.done.sources)}")
+    print(f"answer: {answer_text}")
     print(f"answer.wav: {answer_path}; bytes={len(output_audio)}; duration_s={output_duration_s:.3f}")
     print(f"run.json: {out_dir / 'run.json'}")
     if guard_failure_after_audio_started is not None:

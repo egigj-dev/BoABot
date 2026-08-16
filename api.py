@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+import os
 import re
 import time
 from contextlib import asynccontextmanager
@@ -16,7 +17,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
-from callcenter import HANDOFF_MESSAGE, Outcome, decide, sessions
+from callcenter import (CARD_CLARIFY_MESSAGE, HANDOFF_MESSAGE, Outcome, decide,
+                        is_ambiguous_card_maintenance, sessions)
 from retrieve import embedding_stats
 from retrieve import shutdown as shutdown_retrieval
 from retrieve import warmup as warmup_retrieval
@@ -27,6 +29,10 @@ from voice.sentence_buffer import SentenceBuffer
 logger = logging.getLogger(__name__)
 FIRST_TOKEN_BUDGET_MS = 6000
 _SENTENCE_END_RE = re.compile(r"[.!?][\"'»”\)\]]?(?:\s|$)")
+_MODEL_SOURCE_IDS_RE = re.compile(
+    r"^\s*sources?\s*:\s*\[(?:\s*(?:rate|reg)_\d+\s*,?)+\]\s*$",
+    re.IGNORECASE,
+)
 _fidelity_guard = FidelityGuard()
 
 
@@ -51,54 +57,58 @@ def sse(obj):
 def stream_answer(messages, session_id=None, usage=None):
     """Yield answer tokens and convert upstream protocol failures into RAG errors."""
     payload = {"model": MODEL, "messages": messages, "stream": True,
+               "temperature": 0,
                "usage": {"include": True}}
     if session_id:
         # OpenRouter uses this as the sticky-routing key, keeping one conversation
         # on a cache-capable provider without changing model selection.
         payload["session_id"] = session_id
-    started = time.perf_counter()
     content_yielded = False
     usage = usage if usage is not None else {}
-    try:
-        with requests.post(API, headers={"Authorization": f"Bearer {api_key()}"},
-                           json=payload,
-                           stream=True, timeout=(5, 10)) as response:
-            response.raise_for_status()
-            # OpenRouter may omit a charset on SSE responses; default decoding is then ISO-8859-1.
-            response.encoding = "utf-8"
-            for line in response.iter_lines(decode_unicode=True):
-                # This budget fires when a line arrives, or via the read timeout;
-                # it is not a hard wall-clock cancellation guarantee.
-                if (not content_yielded
-                        and (time.perf_counter() - started) * 1000 > FIRST_TOKEN_BUDGET_MS):
-                    response.close()
-                    raise RAGError("first-token budget exceeded")
-                if not line or not line.startswith("data: "):
-                    continue
-                body = line[6:]
-                if body.strip() == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(body)
-                except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-                    raise RAGError("Model provider returned an invalid stream") from exc
-                chunk_usage = chunk.get("usage")
-                if isinstance(chunk_usage, dict):
-                    usage.clear()
-                    usage.update(chunk_usage)
-                choices = chunk.get("choices")
-                if not choices and isinstance(chunk_usage, dict):
-                    continue
-                try:
-                    delta = choices[0]["delta"]
-                    content = delta.get("content")
-                except (KeyError, IndexError, TypeError, AttributeError) as exc:
-                    raise RAGError("Model provider returned an invalid stream") from exc
-                if content:
-                    content_yielded = True
-                    yield content
-    except requests.RequestException as exc:
-        raise RAGError("Model provider stream failed") from exc
+    for attempt in range(2):
+        started = time.perf_counter()
+        try:
+            with requests.post(API, headers={"Authorization": f"Bearer {api_key()}"},
+                               json=payload,
+                               stream=True, timeout=(5, 10)) as response:
+                response.raise_for_status()
+                # OpenRouter may omit a charset on SSE responses; default decoding is then ISO-8859-1.
+                response.encoding = "utf-8"
+                for line in response.iter_lines(decode_unicode=True):
+                    # This budget fires when a line arrives, or via the read timeout;
+                    # it is not a hard wall-clock cancellation guarantee.
+                    if (not content_yielded
+                            and (time.perf_counter() - started) * 1000 > FIRST_TOKEN_BUDGET_MS):
+                        response.close()
+                        raise RAGError("first-token budget exceeded")
+                    if not line or not line.startswith("data: "):
+                        continue
+                    body = line[6:]
+                    if body.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(body)
+                    except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+                        raise RAGError("Model provider returned an invalid stream") from exc
+                    chunk_usage = chunk.get("usage")
+                    if isinstance(chunk_usage, dict):
+                        usage.clear()
+                        usage.update(chunk_usage)
+                    choices = chunk.get("choices")
+                    if not choices and isinstance(chunk_usage, dict):
+                        continue
+                    try:
+                        delta = choices[0]["delta"]
+                        content = delta.get("content")
+                    except (KeyError, IndexError, TypeError, AttributeError) as exc:
+                        raise RAGError("Model provider returned an invalid stream") from exc
+                    if content:
+                        content_yielded = True
+                        yield content
+            return
+        except requests.RequestException as exc:
+            if content_yielded or attempt == 1:
+                raise RAGError("Model provider stream failed") from exc
 
 
 def source(hit: dict[str, Any]) -> dict[str, str]:
@@ -121,13 +131,21 @@ def authorized_sentences(token_stream, hits):
     buffer = SentenceBuffer()
     for token in token_stream:
         for sentence in buffer.feed_token(token):
+            if _MODEL_SOURCE_IDS_RE.fullmatch(sentence):
+                continue
             verdict = _fidelity_guard.verify_sources(sentence, evidence)
             if not verdict.approved:
+                if os.environ.get("BOABOT_FIDELITY_DEBUG") == "1":
+                    logger.warning("Rejected model sentence: %r", sentence)
                 raise RAGError(f"answer fidelity check failed: {verdict.reason}")
             yield sentence
     for sentence in buffer.finish():
+        if _MODEL_SOURCE_IDS_RE.fullmatch(sentence):
+            continue
         verdict = _fidelity_guard.verify_sources(sentence, evidence)
         if not verdict.approved:
+            if os.environ.get("BOABOT_FIDELITY_DEBUG") == "1":
+                logger.warning("Rejected model sentence: %r", sentence)
             raise RAGError(f"answer fidelity check failed: {verdict.reason}")
         yield sentence
 
@@ -357,6 +375,7 @@ def generate_turn(req: TurnReq):
     decision = None
     outcome = None
     handoff = False
+    handoff_reason = None
     first_sse_ms = None
     first_token_ms = None
     first_sentence_ms = None
@@ -398,6 +417,8 @@ def generate_turn(req: TurnReq):
             sessions.record(session, safe_question, decision.message)
             outcome = decision.outcome
             handoff = decision.handoff
+            if handoff:
+                handoff_reason = "policy"
             for index, sentence in enumerate(safe_sentences(decision.message)):
                 piece = sentence if index == 0 else f" {sentence}"
                 yield emit({"type": "token", "text": piece})
@@ -410,6 +431,15 @@ def generate_turn(req: TurnReq):
         standalone_query = rewrite(decision.question, session.history) \
                            if rewrite_used else decision.question
         yield emit({"type": "tool", "query": standalone_query})
+        if is_ambiguous_card_maintenance(standalone_query):
+            sessions.record(session, decision.question, CARD_CLARIFY_MESSAGE)
+            outcome = Outcome.CLARIFY
+            for index, sentence in enumerate(safe_sentences(CARD_CLARIFY_MESSAGE)):
+                piece = sentence if index == 0 else f" {sentence}"
+                yield emit({"type": "token", "text": piece})
+                yield emit({"type": "approved_sentence", "text": sentence})
+            yield done_event(outcome)
+            return
         byte_identical = standalone_query.encode("utf-8") == decision.question.encode("utf-8")
         if byte_identical:
             assert decision.query_embedding is not None
@@ -439,7 +469,10 @@ def generate_turn(req: TurnReq):
                 # production auth/TLS; default OFF keeps it from public/unaudited consumers.
                 item["passage_text"] = hit["text"]
             sources[item["id"]] = item
-        messages = grounded_messages(decision.question, session.history, hits)
+        # Generation must see the same standalone query that selected the
+        # evidence. Passing an elliptical original (for example "Dhe neni 7?")
+        # made the model occasionally ignore an exact article hit.
+        messages = grounded_messages(standalone_query, session.history, hits)
 
         answer_parts = []
         for sentence in authorized_sentences(
@@ -464,6 +497,7 @@ def generate_turn(req: TurnReq):
         sessions.record(session, question, HANDOFF_MESSAGE)
         outcome = Outcome.HANDOFF
         handoff = True
+        handoff_reason = "system_error"
         for index, sentence in enumerate(safe_sentences(HANDOFF_MESSAGE)):
             piece = sentence if index == 0 else f" {sentence}"
             yield emit({"type": "token", "text": piece})
@@ -475,6 +509,7 @@ def generate_turn(req: TurnReq):
         sessions.record(session, question, HANDOFF_MESSAGE)
         outcome = Outcome.HANDOFF
         handoff = True
+        handoff_reason = "system_error"
         for index, sentence in enumerate(safe_sentences(HANDOFF_MESSAGE)):
             piece = sentence if index == 0 else f" {sentence}"
             yield emit({"type": "token", "text": piece})
@@ -490,6 +525,7 @@ def generate_turn(req: TurnReq):
             "session_id": session.session_id,
             "outcome": outcome.value if outcome else Outcome.HANDOFF.value,
             "handoff": handoff,
+            "handoff_reason": handoff_reason,
             "model": MODEL,
             "first_sse_ms": round(first_sse_ms if first_sse_ms is not None else final_ms, 3),
             "first_token_ms": round(first_token_ms if first_token_ms is not None else final_ms, 3),

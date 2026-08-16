@@ -244,14 +244,16 @@ class LiveTurnBridge:
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             input_audio_transcription=types.AudioTranscriptionConfig(
-                language_codes=["sq-AL"]
+                language_hints=types.LanguageHints(language_codes=["sq"])
             ),
             output_audio_transcription=types.AudioTranscriptionConfig(
-                language_codes=["sq-AL"]
+                language_hints=types.LanguageHints(language_codes=["sq"])
             ),
             speech_config=types.SpeechConfig(language_code="sq"),
             system_instruction=(
-                "Respond briefly to the caller in Albanian. Your response is not "
+                "The caller speaks Albanian (Shqip). Interpret and transcribe the "
+                "input as Albanian; do not translate it into Spanish, English, or "
+                "another language. Respond briefly in Albanian. Your response is not "
                 "authoritative and will be discarded by the application."
             ),
             realtime_input_config=types.RealtimeInputConfig(
@@ -261,6 +263,7 @@ class LiveTurnBridge:
             ),
         )
         transcript = ""
+        finalized = False
         async with client.aio.live.connect(
             model=self.settings.gemini_live_model, config=config
         ) as session:
@@ -288,7 +291,17 @@ class LiveTurnBridge:
                     )
                 self._drop_native_message(message)
                 if server and server.turn_complete:
+                    finalized = True
                     break
+        if not finalized:
+            # The Live receive stream ended (reconnect, provider timeout, closed
+            # session) without ever signaling turn_complete. Whatever text was
+            # accumulated so far is an interim hypothesis, not an accepted final
+            # transcript, and must never reach /turn.
+            raise RuntimeError(
+                "Gemini Live input session ended before turn_complete; "
+                "no finalized transcript is available"
+            )
         return transcript.strip()
 
     def _drop_native_message(self, message: Any) -> None:
@@ -320,7 +333,7 @@ class LiveTurnBridge:
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             output_audio_transcription=types.AudioTranscriptionConfig(
-                language_codes=["sq-AL"]
+                language_hints=types.LanguageHints(language_codes=["sq"])
             ),
             speech_config=types.SpeechConfig(language_code="sq"),
             temperature=0,

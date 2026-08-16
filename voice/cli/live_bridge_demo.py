@@ -50,7 +50,9 @@ async def _text_as_caller_audio(text: str, settings: VoiceSettings) -> tuple[byt
         text, TurnId(0), GenerationId(0), f"demo-input-{uuid.uuid4().hex}"
     ):
         payload.extend(chunk.data)
-    return _wav_pcm(bytes(payload), "synthesized caller")
+    if not payload or len(payload) % 2:
+        raise RuntimeError("Azure TTS returned invalid 16-bit PCM caller audio")
+    return bytes(payload), 16_000
 
 
 def _wav_file_as_caller_audio(path: Path) -> tuple[bytes, int]:

@@ -20,7 +20,28 @@ class SentenceBuffer:
     def feed_token(self, text: str) -> list[str]:
         self._text += text
         released: list[str] = []
-        while (match := SENTENCE_END_RE.search(self._text)) is not None:
+        while True:
+            match = None
+            for candidate in SENTENCE_END_RE.finditer(self._text):
+                prefix = self._text[:candidate.start() + 1]
+                if candidate.group(0).startswith(".") and re.search(
+                    r"\b(?:nr|dr|prof)\.$", prefix, re.IGNORECASE
+                ):
+                    continue
+                match = candidate
+                break
+            if match is None:
+                break
+            # A provider may split a decimal across tokens ("0." then "00.").
+            # Defer a terminal dot after a digit until the next token or finish()
+            # proves whether it is decimal punctuation or the sentence boundary.
+            if (
+                match.end() == len(self._text)
+                and self._text[match.start()] == "."
+                and match.start() > 0
+                and self._text[match.start() - 1].isdigit()
+            ):
+                break
             boundary = match.end()
             sentence = self._text[:boundary].strip()
             self._text = self._text[boundary:]

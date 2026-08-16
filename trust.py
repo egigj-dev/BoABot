@@ -16,7 +16,7 @@ PRICE_INTENT = ("sa esht", "sa eshte", "sa kushton", "sa paguaj", "cfare tarife"
                 "sa me kushton")
 
 BUSINESS_DEPOSIT_MESSAGE = (
-    "Nuk mund të jap normë për depozita të bizneseve, sepse kjo kategori nuk "
+    "Nuk mund të jap normë për depozita ose llogari të bizneseve, sepse kjo kategori nuk "
     "gjendet në korpusin aktual. Tabelat përmbajnë norma depozitash për "
     "individë, por jo për biznese; nuk do të hamendësoj shifra."
 )
@@ -119,14 +119,18 @@ def input_gate(text: str) -> GateResult:
     return GateResult(True)
 
 def is_business_deposit_question(question: str, history: Iterable[dict[str, str]] = ()) -> bool:
-    """Identify the explicitly unsupported business-deposit rate category."""
+    """Identify unsupported business deposit/current-account rate categories."""
     current = _fold(question)
     context = " ".join(_fold(message.get("content", "")) for message in history)
     has_business = any(term in current for term in (
         "biznes", "kompani", "shoqeri", "ndermarr", "tregtar", "korporat",
     ))
     has_deposit = "depozit" in current or (has_business and "depozit" in context)
-    return has_business and has_deposit
+    has_account_rate = (
+        any(term in current for term in ("llogari", "llogarite"))
+        and any(term in current for term in ("norm", "interes"))
+    )
+    return has_business and (has_deposit or has_account_rate)
 
 def trusted_hits(query: str, hits: list[dict[str, Any]]) -> GateResult:
     """Accept only retrieval results strong enough to be used as evidence.

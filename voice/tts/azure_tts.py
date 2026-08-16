@@ -31,6 +31,12 @@ class AzureTTS(TTS):
             credentials = self.settings.require_azure_tts()
             config = speechsdk.SpeechConfig(credentials["AZURE_TTS_KEY"], credentials["AZURE_TTS_REGION"])
             config.speech_synthesis_voice_name = self.settings.azure_tts_voice
+            # AudioChunk is the bridge raw PCM transport. RIFF output adds a
+            # WAV header to each SDK synthesis event, so joining streamed
+            # events makes players stop after the first fragment.
+            config.set_speech_synthesis_output_format(
+                speechsdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm
+            )
             self._synthesizer = speechsdk.SpeechSynthesizer(speech_config=config, audio_config=None)
         return self._synthesizer
 
@@ -94,9 +100,9 @@ class AzureTTS(TTS):
                     first_chunk = False
                 await asyncio.to_thread(future.get)
             finally:
-                synthesizer.synthesizing.disconnect(synthesized)
-                synthesizer.synthesis_completed.disconnect(completed)
-                synthesizer.synthesis_canceled.disconnect(cancelled)
+                synthesizer.synthesizing.disconnect_all()
+                synthesizer.synthesis_completed.disconnect_all()
+                synthesizer.synthesis_canceled.disconnect_all()
                 self._active_render_id = None
                 self._cancelled.discard(render_request_id)
 
