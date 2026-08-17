@@ -1,3 +1,0 @@
-/turn benchmark: N=10, mode=non-empty history, url=http://127.0.0.1:8100
- 1 first_event=    161 ms  first_token=   2921 ms  first_sentence=   3330 ms  done=   4819 ms
- 2 first_event=    177 ms  first_token=   1228 ms  first_sentence=   6772 ms  done=  11863 ms

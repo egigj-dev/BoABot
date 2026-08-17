@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 
-from voice.asr.fake_adapter import FakeStreamingASR
-from voice.events import AudioChunk, Transcript, TurnDone
-from voice.mock_turn import ScriptedTurnService
-from voice.schema1 import Schema1Orchestrator
-from voice.telephony import SimulatedCallControl
-from voice.turn_client import TurnResult, _notify
-from voice.tts.fake_tts import FakeTTS
+from voice.arm_a.asr.fake_adapter import FakeStreamingASR
+from voice.shared.events import AudioChunk, Transcript, TurnDone
+from voice.shared.mock_turn import ScriptedTurnService
+from voice.arm_a.schema1 import Schema1Orchestrator
+from voice.shared.telephony import SimulatedCallControl
+from voice.shared.turn_client import TurnResult, _notify
+from voice.shared.tts.fake_tts import FakeTTS
 
 
 def test_schema1_speaks_only_turn_authorized_output() -> None:
@@ -37,6 +37,7 @@ def test_schema1_speaks_only_turn_authorized_output() -> None:
         assert b"".join(output).decode() == approved
         assert tts.approved_inputs == [approved]
         assert turn.requests[0].question == "Sa është komisioni?"
+        assert turn.requests[0].include_vetted_text
         assert audits[0].authorized_text == [approved]
 
     asyncio.run(scenario())
@@ -81,5 +82,27 @@ def test_schema1_starts_audio_before_turn_done() -> None:
         assert turn_finished
         assert audio_started.is_set()
         assert audit.authorized_text == [approved]
+
+    asyncio.run(scenario())
+
+
+def test_low_confidence_final_never_reaches_server_history() -> None:
+    async def scenario() -> None:
+        turn = ScriptedTurnService("server must not run")
+        control = SimulatedCallControl()
+
+        async def sink(_chunk: AudioChunk) -> None:
+            return None
+
+        orchestrator = Schema1Orchestrator(
+            FakeStreamingASR([]), turn, FakeTTS(), control, sink,
+        )
+        await orchestrator.open_call("call-low")
+        audit = await orchestrator.handle_final(
+            "call-low", Transcript("tekst i pasigurt", True, 0.40, provider="fake"),
+        )
+        assert turn.requests == []
+        assert audit.handoff_requested
+        assert audit.server_outcome == "local_handoff"
 
     asyncio.run(scenario())

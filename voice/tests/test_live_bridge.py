@@ -16,8 +16,8 @@ import pytest
 
 import google.genai as genai_module
 
-from voice.config import VoiceSettings
-from voice.live_bridge import LiveTurnBridge
+from voice.shared.config import VoiceSettings
+from voice.arm_b.live_bridge import LiveTurnBridge
 
 
 def _transcription_message(text: str | None, *, turn_complete: bool) -> SimpleNamespace:

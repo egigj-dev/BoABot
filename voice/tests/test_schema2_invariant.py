@@ -7,20 +7,20 @@ import time
 from collections.abc import AsyncIterable, AsyncIterator
 from types import SimpleNamespace
 
-from voice.correlation import CorrelationRegistry
-from voice.events import AudioChunk, RenderRequest, Transcript, TurnDone
-from voice.fidelity_guard import FidelityGuard
-from voice.metrics import VoiceMetrics
-from voice.schema2 import (
+from voice.shared.correlation import CorrelationRegistry
+from voice.shared.events import AudioChunk, RenderRequest, Transcript, TurnDone
+from voice.shared.fidelity_guard import FidelityGuard
+from voice.shared.metrics import VoiceMetrics
+from voice.arm_b.schema2 import (
     ConstrainedLiveBridge,
     GeminiLiveSessionManager,
     GeminiLiveTranscriptionPipeline,
     NativeResponseSink,
     OutputAudioGate,
 )
-from voice.telephony import SimulatedCallControl
-from voice.turn_client import TurnResult, _notify
-from voice.tts.fake_tts import FakeTTS
+from voice.shared.telephony import SimulatedCallControl
+from voice.shared.turn_client import TurnResult, _notify
+from voice.shared.tts.fake_tts import FakeTTS
 
 
 def test_live_native_response_never_reaches_output_gate() -> None:

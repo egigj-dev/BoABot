@@ -1,7 +1,7 @@
 """Unit coverage for Azure continuous-recognition utterance assembly."""
 
-from voice.cli.live_run import _combine_final_transcripts
-from voice.events import Transcript
+from voice.arm_a.cli.live_run import _combine_final_transcripts
+from voice.shared.events import Transcript
 
 
 def test_combines_multiple_azure_final_segments_conservatively() -> None:

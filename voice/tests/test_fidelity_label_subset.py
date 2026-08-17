@@ -2,7 +2,7 @@
 
 import pytest
 
-from voice.fidelity_guard import FidelityGuard
+from voice.shared.fidelity_guard import FidelityGuard
 
 
 @pytest.mark.parametrize(

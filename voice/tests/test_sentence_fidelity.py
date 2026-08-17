@@ -3,10 +3,10 @@
 import requests
 import pytest
 
-import api
-from api import authorized_sentences
-from voice.fidelity_guard import FidelityGuard
-from voice.sentence_buffer import SentenceBuffer
+import core.api as api
+from core.api import authorized_sentences
+from voice.shared.fidelity_guard import FidelityGuard
+from voice.shared.sentence_buffer import SentenceBuffer
 
 
 def test_sentence_buffer_matches_api_boundaries_and_drops_tool() -> None:
@@ -56,11 +56,19 @@ def test_isolated_numeric_fragment_fails_even_when_evidence_contains_zero() -> N
     assert "distinguishing label" in result.reason
 
 
-def test_fidelity_guard_treats_dot_as_albanian_thousands_separator() -> None:
+def test_fidelity_guard_does_not_guess_ambiguous_single_dot_locale() -> None:
     guard = FidelityGuard()
     answer = "Komisioni maksimal është 10.000 ALL."
     evidence = "Komisioni maksimal është 10000 ALL."
-    assert guard.verify_sources(answer, [{"passage_text": evidence}]).approved
+    assert not guard.verify_sources(answer, [{"passage_text": evidence}]).approved
+    assert guard.verify_sources(
+        "Komisioni maksimal është 1.000 ALL.",
+        [{"passage_text": "Komisioni maksimal është 1.0 ALL."}],
+    ).approved
+    assert guard.verify_sources(
+        "Komisioni maksimal është 1.000.000 ALL.",
+        [{"passage_text": "Komisioni maksimal është 1000000 ALL."}],
+    ).approved
 
 
 def test_fidelity_guard_parses_apostrophe_thousands_as_one_value() -> None:

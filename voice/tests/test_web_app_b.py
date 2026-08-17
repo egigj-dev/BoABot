@@ -7,7 +7,7 @@ import wave
 
 from fastapi.testclient import TestClient
 
-from voice import web_app_b
+from voice.arm_b import web_app_b
 
 
 def _wav(milliseconds: int = 100, sample_rate_hz: int = 16_000) -> bytes:

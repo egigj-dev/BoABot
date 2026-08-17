@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from voice.fidelity_guard import Claim, FidelityGuard
+from voice.shared.fidelity_guard import Claim, FidelityGuard
 
 
 TABLE = """Tarifat e paketës Aurora — shërbimi Delta — kufiri maksimal

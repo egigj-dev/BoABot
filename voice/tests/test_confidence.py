@@ -1,7 +1,7 @@
 """Schema 1 §5 calibrated confidence decisions."""
 
-from voice.events import Transcript
-from voice.schema1 import ConfidenceAction, ConfidencePolicy
+from voice.shared.events import Transcript
+from voice.shared.confidence import ConfidenceAction, ConfidencePolicy
 
 
 def test_confidence_policy_proceed_clarify_handoff() -> None:
@@ -17,17 +17,15 @@ def test_critical_span_needs_point_85() -> None:
     assert ConfidencePolicy().evaluate(transcript).action is ConfidenceAction.CLARIFY
 
 
-def test_critical_span_gate_bypass_is_explicit_and_per_call(monkeypatch) -> None:
+def test_critical_span_gate_bypass_is_explicit_in_policy_construction() -> None:
     transcript = Transcript("Norma është 10 EUR", True, 0.95)
     policy = ConfidencePolicy()
 
-    monkeypatch.delenv("VOICE_CONFIDENCE_CRITICAL_DISABLED", raising=False)
     assert policy.evaluate(transcript).reason == "critical-span confidence unavailable"
 
-    monkeypatch.setenv("VOICE_CONFIDENCE_CRITICAL_DISABLED", "1")
-    decision = policy.evaluate(transcript)
+    decision = ConfidencePolicy(enabled=False).evaluate(transcript)
     assert decision.action is ConfidenceAction.PROCEED
-    assert decision.reason == "critical-span gate bypassed: provider confidence proven constant"
+    assert decision.reason == "confidence gate explicitly disabled"
 
 
 def test_safety_keyword_disagreement_handoffs() -> None:

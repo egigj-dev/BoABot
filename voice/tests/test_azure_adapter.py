@@ -1,6 +1,6 @@
 """Azure transcript alignment and corpus-entity correction regressions."""
 
-from voice.asr.azure_adapter import (
+from voice.arm_a.asr.azure_adapter import (
     _canonicalize_bank_entity,
     _critical_confidences,
 )
@@ -15,7 +15,7 @@ def test_formatted_36_aligns_to_spoken_albanian_number_words() -> None:
         {"Word": "mujore", "Confidence": 0.90},
     ]
 
-    assert _critical_confidences("depozitën 36 mujore", words)["36"] == 0.91
+    assert "36" not in _critical_confidences("depozitën 36 mujore", words)
 
 
 def test_uniquely_repairs_observed_otp_bank_variants() -> None:

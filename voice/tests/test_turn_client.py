@@ -10,9 +10,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
-from api import TurnReq
-from voice.events import TurnId, TurnRequest
-from voice.turn_client import FirstTokenDeadline, TurnClient
+from core.api import TurnReq
+from voice.shared.events import TurnId, TurnRequest
+from voice.shared.turn_client import FirstTokenDeadline, TurnClient
 
 
 def _sse(event: dict[str, object]) -> str:

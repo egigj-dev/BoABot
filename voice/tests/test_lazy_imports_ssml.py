@@ -2,12 +2,12 @@
 
 import importlib
 
-from voice.tts.ssml import canonicalize
+from voice.shared.tts.ssml import canonicalize
 
 
 def test_provider_modules_import_without_provider_sdks() -> None:
-    for name in ("voice.asr.azure_adapter", "voice.asr.chirp_adapter",
-                 "voice.tts.azure_tts", "voice.schema2"):
+    for name in ("voice.arm_a.asr.azure_adapter", "voice.arm_a.asr.chirp_adapter",
+                 "voice.shared.tts.azure_tts", "voice.arm_b.schema2"):
         importlib.import_module(name)
 
 

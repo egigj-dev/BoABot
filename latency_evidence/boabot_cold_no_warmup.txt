@@ -1,6 +1,0 @@
-/turn benchmark: N=1, mode=empty history, url=http://127.0.0.1:8100
- 1 first_event=   6008 ms  first_token=  10046 ms  done=  11322 ms
-summary (ms)
-  first SSE event  p50    6008  p95    6008
-  first token      p50   10046  p95   10046
-  done             p50   11322  p95   11322

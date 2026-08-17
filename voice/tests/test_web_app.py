@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from voice import web_app
+from voice.arm_a import web_app
 
 
 def _wav(milliseconds: int = 100) -> bytes:
@@ -27,9 +27,11 @@ def test_page_exposes_microphone_pcm_and_playback_controls() -> None:
     assert "navigator.mediaDevices.getUserMedia" in response.text
     assert "OfflineAudioContext" in response.text
     assert "audio/wav" in response.text
-    assert 'id="record"' in response.text
-    assert 'id="stop"' in response.text
-    assert "player.id = 'answer-audio'" in response.text
+    assert 'id="rec"' in response.text
+    assert 'id="send"' in response.text
+    assert 'id="cancel"' in response.text
+    assert "document.createElement('audio')" in response.text
+    assert "a.play().catch" in response.text
 
 
 def test_browser_turn_runs_arm_a_and_returns_safe_public_result(monkeypatch) -> None:

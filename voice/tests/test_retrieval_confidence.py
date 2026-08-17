@@ -1,6 +1,6 @@
 """Unit checks for the two default-off retrieval confidence signals."""
 
-from voice.confidence_via_retrieval import rerank_nbest, validate_entities
+from voice.shared.confidence_via_retrieval import rerank_nbest, validate_entities
 
 
 def test_nbest_is_disabled_by_default() -> None:
@@ -13,7 +13,7 @@ def test_nbest_returns_all_scores_margin_and_uncertainty() -> None:
     values = {"low": 0.49, "high": 0.70}
 
     def fake_retrieve(query: str, **_kwargs: object) -> list[dict[str, object]]:
-        return [{"id": query, "score": values[query]}]
+        return [{"id": query, "dense_score": values[query]}]
 
     result = rerank_nbest(["low", "high"], enabled=True, retrieve_fn=fake_retrieve)
     assert result.chosen_hypothesis == "high"

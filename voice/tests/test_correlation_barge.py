@@ -6,11 +6,11 @@ import asyncio
 
 import pytest
 
-from voice.correlation import CorrelationError, CorrelationRegistry
-from voice.barge_in import BargeInCoordinator
-from voice.events import AudioChunk, RenderRequest
-from voice.metrics import VoiceMetrics
-from voice.schema2 import OutputAudioGate
+from voice.shared.correlation import CorrelationError, CorrelationRegistry
+from voice.shared.barge_in import BargeInCoordinator
+from voice.shared.events import AudioChunk, RenderRequest
+from voice.shared.metrics import VoiceMetrics
+from voice.arm_b.schema2 import OutputAudioGate
 
 
 def test_correlation_registry_rejects_stale_id() -> None:
