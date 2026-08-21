@@ -119,6 +119,25 @@ def input_gate(text: str) -> GateResult:
         return GateResult(False, UNSAFE_INPUT_MESSAGE, "encoded_or_instruction_override")
     return GateResult(True)
 
+def issuer_of(hit_id: str, text: str = "") -> str:
+    """Return the issuing institution for one retrieved chunk (Step 8).
+
+    ``rate_*`` ids are commercial-bank fee tables: the issuer is the bank named
+    in the table row(s). Anything else is a Bank-of-Albania regulation. The
+    mapping is in-code (no DB migration) and mandatory: a commercial fee must
+    never be presented as the Bank of Albania's own rate.
+    """
+    if str(hit_id).startswith("rate_"):
+        if not isinstance(text, str) or not text:
+            return "tabela e tarifave te bankave"
+        folded_text = fold(text)
+        matches = [name for name in bank_names() if name in folded_text]
+        if len(matches) == 1:
+            return matches[0]
+        return "bankat e tarifat komerciale" if matches else "tabelat e tarifave"
+    return "Banka e Shqipërisë"
+
+
 def trusted_hits(query: str, hits: list[dict[str, Any]]) -> GateResult:
     """Accept only retrieval results strong enough to be used as evidence.
 

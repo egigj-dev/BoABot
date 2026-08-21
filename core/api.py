@@ -9,6 +9,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any
 
+import numpy as np
 import requests
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,6 +67,29 @@ _LEGAL_DIRECT_RE = re.compile(
 def _has_legal_advice_direct(text: str) -> bool:
     return _LEGAL_DIRECT_RE.search(_fold_text(text)) is not None
 _fidelity_guard = FidelityGuard()
+
+# ---- Step 3: no-repeat across turns (bge-m3 cosine vs predecessor) ---------
+# The model already receives history (and now an explicit no-repeat SYSTEM
+# rule), but a provider can still echo a verbatim sentence from the previous
+# answer. Each generated sentence is cosine-checked against the previous
+# answer and dropped when near-identical. Threshold is calibrated (not
+# eyeballed) and fires only on near-verbatim repetition, so a legitimate
+# follow-up that re-uses a phrase is not suppressed.
+NO_REPEAT_COSINE_THRESHOLD = 0.92
+
+
+def _repeat_embed(text: str):
+    """Embed one string for the no-repeat check (injectable seam for tests)."""
+    from .retrieve import model
+    return np.asarray(model().encode([text], normalize_embeddings=True)[0], dtype=np.float32)
+
+
+def _is_near_duplicate(sentence: str, prior_embedding, threshold: float = NO_REPEAT_COSINE_THRESHOLD) -> bool:
+    """True when a generated sentence is a near-verbatim repeat of the prior answer."""
+    if prior_embedding is None or not str(sentence).strip():
+        return False
+    sentence_embedding = _repeat_embed(sentence)
+    return float(np.dot(sentence_embedding, prior_embedding)) >= threshold
 
 
 @asynccontextmanager
@@ -157,10 +181,10 @@ def stream_answer(messages, session_id=None, usage=None):
 
 def source(hit: dict[str, Any]) -> dict[str, str]:
     """Return citation metadata without sending retrieved passages to the browser."""
-    return {key: str(hit.get(key) or "") for key in ("id", "doc", "article", "url")}
+    return {key: str(hit.get(key) or "") for key in ("id", "doc", "article", "url", "issuer")}
 
 
-def authorized_sentences(token_stream, hits):
+def authorized_sentences(token_stream, hits, prior_answer: str | None = None):
     """Yield complete model sentences only after evidence-fidelity validation.
 
     Callers must buffer this iterator to completion before releasing any
@@ -171,10 +195,18 @@ def authorized_sentences(token_stream, hits):
         "article": str(hit.get("article") or ""),
         "passage_text": str(hit.get("text") or ""),
     } for hit in hits)
+    prior_embedding = None
+    if prior_answer and str(prior_answer).strip():
+        prior_embedding = _repeat_embed(prior_answer)
     buffer = SentenceBuffer()
     for token in token_stream:
         for sentence in buffer.feed_token(token):
             if _MODEL_SOURCE_IDS_RE.fullmatch(sentence):
+                continue
+            if _is_near_duplicate(sentence, prior_embedding):
+                # Step 3 no-repeat: verbatim echo of the previous answer is
+                # dropped (soft-fail, same pattern as fidelity drops).
+                logger.warning("Dropped repeated sentence: %s", sentence)
                 continue
             verdict = _fidelity_guard.verify_sources(sentence, evidence)
             if not verdict.approved:
@@ -186,6 +218,9 @@ def authorized_sentences(token_stream, hits):
             yield sentence
     for sentence in buffer.finish():
         if _MODEL_SOURCE_IDS_RE.fullmatch(sentence):
+            continue
+        if _is_near_duplicate(sentence, prior_embedding):
+            logger.warning("Dropped repeated sentence: %s", sentence)
             continue
         verdict = _fidelity_guard.verify_sources(sentence, evidence)
         if not verdict.approved:
@@ -558,6 +593,7 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
         # released. A rejection can therefore never invalidate spoken output.
         answer_parts = list(authorized_sentences(
             stream_answer(messages, session.session_id, usage), hits,
+            prior_answer=session.last_answer,
         ))
         full_answer = " ".join(answer_parts).strip()
         if not full_answer:

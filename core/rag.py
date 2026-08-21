@@ -7,7 +7,7 @@ import requests
 
 from .retrieve import fetch_doc_article, retrieve
 from .text_norm import fold
-from .trust import NO_EVIDENCE_MESSAGE, trusted_hits
+from .trust import NO_EVIDENCE_MESSAGE, issuer_of, trusted_hits
 from .answerability import ABSTAIN_MESSAGE, answerable
 
 API = "https://openrouter.ai/api/v1/chat/completions"
@@ -55,6 +55,13 @@ SYSTEM = (
     "mbarten veçmas në fushën sources të ngjarjes done. Ruaji shifrat pikërisht "
     "në formën e burimit, si 0.50 ose 2.00; mos i rrumbullakos, konverto ose "
     "riformato. "
+    "Mos përsërit fjalë për fjalë fjali që ke thënë më herët në këtë bisedë; "
+    "nëse një pretendim u përmend tashmë, mos e përsërit. Çdo shifër duhet t'i "
+    "atribuohet institucionit që e ka publikuar: Bankës së Shqipërisë ose bankës "
+    "tregtare përkatëse. Mos ia atribuo Bankës së Shqipërisë një tarifë të një "
+    "banke tregtare, dhe as anasjelltas. Mos shpik data; nëse materiali i cituar "
+    "nuk përmban datë, mos jep datë dhe thuaj se shifrat janë 'sipas tabelave të "
+    "publikuara'. "
     "Mos jep KËSHILLË LIGJORE. Nëse pyetja pyet se çfarë DUHET TË BËJË PYTËSI "
     "në situatën e tij specifike, nëse AI ËSHTË PËRGJEGJËS, nëse një gjobë ose "
     "klauzolë e caktuar ndaj tij është e ligjshme, ose çfarë mjeti ligjor mund "
@@ -199,7 +206,13 @@ def retrieve_evidence(query, history=None, query_embedding=None, embedded_query=
         })
     if not decision.allowed:
         return [], decision.message or NO_EVIDENCE_MESSAGE
-    return list(decision.accepted_hits), ""
+    accepted = list(decision.accepted_hits)
+    for hit in accepted:
+        # Step 8 (issuer attribution): every accepted chunk carries a derived
+        # issuer, fed to generation so a commercial-bank fee is never presented
+        # as the Bank of Albania's own rate. In-code; no DB migration.
+        hit.setdefault("issuer", issuer_of(str(hit.get("id") or ""), str(hit.get("text") or "")))
+    return accepted, ""
 
 
 
