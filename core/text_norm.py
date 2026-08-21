@@ -29,10 +29,8 @@ def fold_ws(text: str) -> str:
 # user typed them rather than risk corrupting a word.
 _DIACRITIC_LEXICON = {
     "cfar": "çfarë", "cfare": "çfarë",
-    "cile": "çilë", "cili": "çili", "cilin": "çilin", "cilat": "çilat",
     "eshte": "është", "esht": "është",
     "pershendetje": "përshëndetje",
-    "shqiperi": "shqipëria", "shaqiperi": "shqipëria",
     "bankes": "bankës",
     "qendrueshem": "qëndrueshëm",
     "pergjigje": "përgjigje", "pergjigjen": "përgjigjen",

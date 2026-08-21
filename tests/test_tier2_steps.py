@@ -42,20 +42,28 @@ def test_restore_diacritics_preserves_existing_diacritics():
     assert text_norm.restore_diacritics(already) == already
 
 
+def test_restore_diacritics_does_not_corrupt_plain_c_question_words():
+    # cili/cila/cilat/cilin are spelled with plain C in Albanian (only cfar/cdo/eshte use ç/ë). These must pass through untouched.
+    for word in ("cilat", "cila", "cili", "cilin", "cile"):
+        assert text_norm.restore_diacritics(word) == word
+    # "shqiperi" is left as-typed (no forced definite form "shqipëria").
+    assert text_norm.restore_diacritics("shqiperi") == "shqiperi"
+
+
 def test_restore_diacritics_preserves_punctuation_and_whitespace():
     out = text_norm.restore_diacritics("  Cfare?? eshte  (kredi).")
     assert out == "  Çfarë?? është  (kredi)."
 
 
 def test_decide_applies_diacritic_restore_to_question(monkeypatch):
-    # A bank-name question typed without diacritics should route to retrieval
-    # with the canonical form in decision.question (Step 2a threaded into decide).
+    # A fee question typed without diacritics should route to retrieval with
+    # the canonical form in decision.question (Step 2a threaded into decide).
     monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: "answer")
     monkeypatch.setattr(callcenter, "_encode_question",
                         lambda q: np.asarray([0.0, 0.0], dtype=np.float32))
     monkeypatch.setattr(callcenter, "_probe_score", lambda *a: None)
-    decision = decide("cfare eshte komisioni i bankes shqiperi?", "", [])
-    assert decision.question == "çfarë është komisioni i bankës shqipëria?"
+    decision = decide("cfare eshte komisioni per shlyerje te parakohshme?", "", [])
+    assert decision.question == "çfarë është komisioni per shlyerje te parakohshme?"
 
 
 # ---- Step 2b: fused single-call intent + rewrite + legal flags -------------
