@@ -49,22 +49,25 @@ _ARTICLE_RE = re.compile(r"\bneni(?:n|t)?\s+(\d+(?:/\d+)?)\b", re.I)
 _DIGIT_RE = re.compile(r"\d")
 
 ABSTAIN_MESSAGE = (
-    "Materialet që gjeta në korpus nuk përmbajnë përgjigjen e kësaj pyetjeje. "
-    "Nuk do të hamendësoj një përgjigje. Mund ta riformuloni pyetjen ose të "
-    "specifikoni bankën, produktin ose rregulloren konkrete dhe do të provoj përsëri."
+    "Nuk kam një përgjigje të saktë për këtë pyetje nga të dhënat e publikuara. "
+    "Riformuloni pyetjen ose specifikoni bankën, produktin ose rregulloren dhe do "
+    "të provoj përsëri."
 )
 
 _VERDICT_SYSTEM = (
     "Ti je kontrolluesi i përgjigjshmërisë për një asistent bankar shqiptar që "
     "u përgjigjet rregulloreve bankare e tarifave. Pyetja e përdoruesit dhe "
-    "materialet e marra nga korpusi do të jepen më poshtë. Vendos nëse materialet "
-    "përmbajnë PËRGJIGJEN E PLOTË DHE TË SAKTË për pyetjen. Kthe VETËM një fjalë, "
-    "pa asnjë shpjegim: YES nëse materialet përmbajnë informacionin e nevojshëm për "
-    "t'u përgjigjur pyetjes; NO nëse materialet zënë me temë tjetër të lidhur por "
-    "nuk e përmbajnë përgjigjen, ose vetëm një pjesë të saj; UNCLEAR nëse nuk je i "
-    "sigurt nëse materialet janë të mjaftueshëm."
+    "materialet e marra do të jepen më poshtë. Vendos nëse materialet përmbajnë "
+    "informacion të mjaftueshëm për t'u përgjigjur pyetjes, edhe kur përgjigja "
+    "duhet ndërtuar duke bashkuar disa fragmente. Kthe VETËM një fjalë, pa asnjë "
+    "shpjegim: YES nëse materialet përmbajnë të dhëna për temën, produktin ose "
+    "entitetin që pyetet, edhe nëse përgjigja e plotë duhet ndërtuar nga disa "
+    "fragmente (asistenti përgjigjet vetëm me atë që materialet mbështesin); "
+    "NO vetëm nëse materialet janë për një temë tjetër dhe nuk kanë të bëjnë fare "
+    "me atë që pyetet; UNCLEAR nëse materialet janë pjesërisht në temë por të "
+    "paplota pa asnjë të dhënë të përdorshme."
 )
-_VERDICT_USER = "pyetja: {question}\n\nmaterialet e marra nga korpusi:\n{evidence}"
+_VERDICT_USER = "pyetja: {question}\n\nmaterialet e marra:\n{evidence}"
 _VERDICT_YES = re.compile(r"\bYES\b", re.I)
 _VERDICT_NO = re.compile(r"\bNO\b", re.I)
 _VERDICT_UNCLEAR = re.compile(r"\bUNCLEAR\b", re.I)
@@ -163,16 +166,48 @@ def _answerability_verdict(question: str, hits):
     return None
 
 
-def answerable(question: str, hits) -> tuple[bool, str]:
-    """Return (can_generate, abstain_reason). Fail-closed on the lexical floor;
-    the LLM verdict abstains only on a real NO/UNCLEAR judgment.
+def _level(question: str, hits) -> tuple[str, str]:
+    """Three-way classification of how completely the evidence answers.
+
+    Returns (level, reason) where level is one of:
+      SUPPORTED          -> the evidence answers completely -> generate.
+      PARTIALLY_SUPPORTED-> the evidence answers only partly (LLM UNCLEAR) ->
+                           still generate, but may lead with a partial hedge.
+      UNSUPPORTED        -> the evidence does not answer -> abstain.
+    Fail-closed on the lexical floor; the LLM verdict abstains only on a real
+    NO and downgrades to PARTIALLY on UNCLEAR (Step 6). No hits, or a parse/
+    transport failure where judgement is inconclusive, never fabricates an
+    answer.
     """
     if not hits:
-        return False, "abstain_no_hits"
+        return "UNSUPPORTED", "abstain_no_hits"
     answerable_, reason = lexical_verdict(question, hits)
     if not answerable_:
-        return False, reason
+        return "UNSUPPORTED", reason
     verdict = _answerability_verdict(question, hits)
-    if verdict and str(verdict).strip().upper() in ("NO", "UNCLEAR"):
-        return False, "abstain_llm_judgment"
-    return True, ""
+    if verdict and str(verdict).strip().upper() == "NO":
+        return "UNSUPPORTED", "abstain_llm_judgment"
+    if verdict and str(verdict).strip().upper() == "UNCLEAR":
+        return "PARTIALLY_SUPPORTED", "partial_llm_judgment"
+    return "SUPPORTED", ""
+
+
+def judge(question: str, hits) -> tuple[str, str]:
+    """Step 6: three-way SUPPORTED / PARTIALLY_SUPPORTED / UNSUPPORTED gate.
+
+    Returns (level, reason). Backward-compatible with the old binary contract:
+    SUPPORTED and PARTIALLY_SUPPORTED both mean \"can generate\"; only
+    UNSUPPORTED abstains.
+    """
+    return _level(question, hits)
+
+
+def answerable(question: str, hits) -> tuple[bool, str]:
+    """Return (can_generate, abstain_reason). Kept for backward compatibility.
+
+    UNSUPPORTED abstains; SUPPORTED and PARTIALLY_SUPPORTED both allow
+    generation (the caller may use the level to decide whether to lead with a
+    hedge).
+    """
+    level, reason = _level(question, hits)
+    return (level != "UNSUPPORTED", reason)

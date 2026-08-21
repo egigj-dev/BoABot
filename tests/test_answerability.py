@@ -89,11 +89,15 @@ def test_llm_no_abstains(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("verdict", ["UNCLEAR", "unclear"])
-def test_llm_unclear_abstains(monkeypatch, verdict) -> None:
+def test_llm_unclear_is_partially_supported(monkeypatch, verdict) -> None:
+    # Step 6 (3-way gate): UNCLEAR no longer abstains — it downgrades to
+    # PARTIALLY_SUPPORTED, which still allows generation (the caller may hedge).
     _inject(monkeypatch, verdict)
     ok, reason = answerable("sa eshte komisioni?", [_hit("2.00% komision.")])
-    assert ok is False
-    assert reason == "abstain_llm_judgment"
+    assert ok is True
+    assert reason == "partial_llm_judgment"
+    level, _ = answerability.judge("sa eshte komisioni?", [_hit("2.00% komision.")])
+    assert level == "PARTIALLY_SUPPORTED"
 
 
 def test_llm_yes_generates(monkeypatch) -> None:

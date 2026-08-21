@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from .retrieve import EMBEDDING_MODEL_NAME, model
-from .text_norm import fold
+from .text_norm import fold, restore_diacritics
 from .trust import UNSAFE_INPUT_MESSAGE, input_gate
 
 MAX_HISTORY_MESSAGES = 12
@@ -89,6 +89,8 @@ class Decision:
     query_embedding: np.ndarray | None = None  # Normalized caller vector for downstream retrieval reuse.
     handoff_score: float | None = None  # Frozen positive-vs-negative neighbour margin.
     reason: str = ""
+    rewritten_query: str | None = None  # Step 2b: standalone query from the fused router call (when ON).
+    legal_flags: dict | None = None  # Step 10 groundwork: structured flags from the fused call, if any.
 
 @dataclass
 class Session:
@@ -288,6 +290,22 @@ def _is_legal_advice_explicit(text: str) -> bool:
     return _LEGAL_ADVICE_EXPLICIT_RE.search(fold(text)) is not None
 
 
+# ---- Negation-statement floor ----------------------------------------------
+# "nuk kam karte" / "nuk kam llogari" / "nuk kam pyetje" are responses to a
+# prior card/account/question, NOT an instruction to act on an account. They
+# must never be escalated to a human (the router can misfire on "karte"/account
+# words), so they deterministically fall through to a continue-helping
+# response before the router or the incident probe can see them.
+_NEGATION_STATEMENT_RE = re.compile(
+    r"\bnuk\s+kam\s+(?:asnjë\s+)?(?:kart\w*|llogari\w*|pyetje(?:s)?)\b",
+    re.I,
+)
+
+
+def _is_negation_statement(text: str) -> bool:
+    return _NEGATION_STATEMENT_RE.search(fold(text)) is not None
+
+
 # ---- LLM turn-router seam ---------------------------------------------------
 # Replaces the lexical smalltalk/account_action/clarify decision blocks with a
 # single semantic intent classification (core/router.py). The router is OFF by
@@ -341,13 +359,27 @@ def _route_label(label: str, question: str, last_handoff: bool) -> Decision | No
         return Decision(Outcome.UNSUPPORTED, LEGAL_ADVICE_MESSAGE,
                         question=question, handoff=False, reason="legal_advice_router")
     if label == "account_action":
+        # Fail-closed: an LLM "account_action" only escalates when the
+        # deterministic account-action vocabulary is actually present. Vague or
+        # negation turns ("nuk kam karte") must never be escalated to a human
+        # on the router's word alone — false handoffs are the worst UX failure.
+        if not _is_account_action(question):
+            return None
         return Decision(Outcome.HANDOFF, ACCOUNT_HANDOFF_MESSAGE,
                         handoff=True, reason="account_action")
     if label in ("incident", "incident_handoff"):
         return Decision(Outcome.HANDOFF, SECURITY_HANDOFF_MESSAGE,
                         handoff=True, reason="incident_router")
     if label == "clarify":
-        return Decision(Outcome.CLARIFY, CARD_CLARIFY_MESSAGE, question=question,
+        # A generic "clarify" (confused / needs-disambiguation turn) asks the
+        # user to restate — NOT the card-specific text. The card-debit/credit
+        # disambiguation stays deterministic: it fires ONLY when
+        # is_ambiguous_card_maintenance (kart + mirembajt, no debit/credit or
+        # segment given) is actually true, so a router "clarify" misfire on
+        # unrelated turns can no longer start an inescapable card script.
+        msg = CARD_CLARIFY_MESSAGE if is_ambiguous_card_maintenance(question) \
+            else CLARIFY_MESSAGE
+        return Decision(Outcome.CLARIFY, msg, question=question,
                         reason="disambiguation")
     return None  # "answer" / unknown -> fall through to retrieval
 
@@ -357,6 +389,23 @@ def _classify_turn(question: str, last_outcome=None, last_handoff: bool = False)
     try:
         from .router import classify_turn as impl
         return impl(question, last_outcome, last_handoff)
+    except Exception:
+        return None
+
+
+def _analyze_turn(question: str, history: list[dict[str, str]],
+                  last_outcome=None, last_handoff: bool = False):
+    """Injectable seam: the FUSED router call (Step 2b).
+
+    Returns a router.TurnAnalysis (label + standalone rewritten query + legal
+    flags) from a single model call, or None when disabled/off/unparseable so
+    the caller falls back to the separate classify+rewrite pair. This is the
+    latency fix: with the router ON, intent + rewrite + legal flags are decided
+    in ONE call instead of classify_turn then rewrite().
+    """
+    try:
+        from .router import analyze_turn as impl
+        return impl(question, history, last_outcome, last_handoff)
     except Exception:
         return None
 
@@ -436,6 +485,11 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
         return Decision(Outcome.UNSUPPORTED, UNSAFE_INPUT_MESSAGE)
 
     clean_question, pii_redacted = _redact_pii(question)
+    # Step 2a: restore known ç/ë diacritics on lossily-typed tokens so the
+    # embedding + retrieval + generation all see the canonical Albanian form.
+    # Lexicon-bounded (no guessing); folding is rotation-invariant so the
+    # deterministic lexical gates below are unaffected by the restoration.
+    clean_question = restore_diacritics(clean_question)
     if _SECRET_FAST_RE.search(clean_question):
         # The raw credential-bearing text is deliberately not copied into the
         # decision/session history; expose that redaction happened in telemetry.
@@ -462,13 +516,24 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
             question=clean_question, handoff=False, reason="legal_advice_explicit",
         )
 
-    # ---- LLM turn-router (semantic intent) ----
-    # Replaces the lexical smalltalk / account_action / card-clarify gates with a
-    # single semantic classification. The router is OFF by default
-    # (BOABOT_LLM_ROUTER=1 to enable) and falls back to _fallback_label so
-    # offline behavior and tests are unchanged until explicitly enabled. The
-    # security gates above and the legal-advice floor stay deterministic.
-    #
+    # ---- Negation-statement floor (deterministic, BEFORE the router) ----
+    # "nuk kam karte" / "nuk kam llogari" answer a prior card/account question
+    # without any action request; never escalate them to a human.
+    if _is_negation_statement(clean_question):
+        return Decision(
+            Outcome.ANSWER, META_FOLLOWUP_MESSAGE,
+            question=clean_question, handoff=last_handoff,
+            reason="negation_statement",
+        )
+
+    # ---- LLM turn-router (semantic intent, fused when ON) ----
+    # Step 2b: when the router is enabled, ONE fused call returns the intent
+    # label AND the standalone rewritten query (AND legal flags) together.
+    # That replaces the old separate classify_turn(...) then rewrite() pair on
+    # the happy path — a single model call for intent+rewrite+legal. When
+    # disabled/unavailable we fall back to classify_turn then, downstream, to
+    # needs_rewrite()/rewrite() in api.py. The security gates above and the
+    # legal-advice floor stay deterministic and OUTSIDE this seam.
     # [SUPERSEDED] Small-talk handled semantically by the router label
     #              "smalltalk". Old lexical form:
     #   if _is_smalltalk(clean_question):
@@ -479,9 +544,17 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     #   if _is_account_action(clean_question):
     #       return Decision(Outcome.HANDOFF, ACCOUNT_HANDOFF_MESSAGE, handoff=True,
     #                       reason="account_action")
-    label = _classify_turn(clean_question, last_outcome, last_handoff)
-    if label is None:
-        label = _fallback_label(clean_question)
+    fused_rewrite = None
+    fused_legal = None
+    analysis = _analyze_turn(clean_question, history, last_outcome, last_handoff)
+    if analysis is not None and getattr(analysis, "label", None):
+        label = analysis.label
+        fused_rewrite = getattr(analysis, "rewritten_query", None)
+        fused_legal = getattr(analysis, "legal_flags", None)
+    else:
+        label = _classify_turn(clean_question, last_outcome, last_handoff)
+        if label is None:
+            label = _fallback_label(clean_question)
     routed = _route_label(label, clean_question, last_handoff)
     if routed is not None:
         return routed
@@ -517,4 +590,5 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     #                       question=clean_question, query_embedding=query_embedding,
     #                       handoff_score=account_score, reason="disambiguation")
     return Decision(None, question=clean_question, query_embedding=query_embedding,
-                    handoff_score=account_score)
+                    handoff_score=account_score,
+                    rewritten_query=fused_rewrite, legal_flags=fused_legal)

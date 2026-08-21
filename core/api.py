@@ -26,7 +26,7 @@ from .retrieve import shutdown as shutdown_retrieval
 from .retrieve import warmup as warmup_retrieval
 from .trust import NO_EVIDENCE_MESSAGE
 from .text_norm import fold as _fold_text
-from .answerability import ABSTAIN_MESSAGE, answerable
+from .answerability import ABSTAIN_MESSAGE, judge
 from voice.shared.fidelity_guard import FidelityGuard
 from voice.shared.sentence_buffer import SentenceBuffer
 
@@ -442,8 +442,9 @@ def _voice_bridge_authorized(request: Request) -> bool:
 
 
 def turn_done(outcome: Outcome, session_id: str, sources=None, handoff=False,
-              pii_redacted=False, usage=None, reason=None):
-    return sse({
+              pii_redacted=False, usage=None, reason=None, answer_text=None,
+              answer_display=None):
+    event = {
         "type": "done",
         "outcome": outcome.value,
         "session_id": session_id,
@@ -452,7 +453,18 @@ def turn_done(outcome: Outcome, session_id: str, sources=None, handoff=False,
         "pii_redacted": pii_redacted,
         "usage": usage if usage is not None else {},
         "reason": reason,
-    })
+    }
+    # Step 9 (answer_text / answer_display split): consumers that render the
+    # answer (voice/telephony TTS) read answer_text (plain speakable prose);
+    # browser/chat consumers may render answer_display (presently the same
+    # plain prose, kept as a distinct field so a formatting/citation layer can
+    # diverge later without a contract break). Omitted (None) on non-answer
+    # outcome paths so the payload stays backward-compatible.
+    if answer_text is not None:
+        event["answer_text"] = answer_text
+    if answer_display is not None:
+        event["answer_display"] = answer_display
+    return sse(event)
 
 
 def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
@@ -528,9 +540,17 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                              reason=decision.reason or None)
             return
 
-        rewrite_used = needs_rewrite(decision.question, session.history)
-        standalone_query = rewrite(decision.question, session.history) \
-                           if rewrite_used else decision.question
+        # Step 2b: when the fused router (ON) supplied a standalone query, use
+        # it directly and skip the separate needs_rewrite()/rewrite() pair — the
+        # fused call already rewrote in the same model round-trip as the intent.
+        fused_rewrite = getattr(decision, "rewritten_query", None) or None
+        if fused_rewrite:
+            standalone_query = fused_rewrite
+            rewrite_used = True
+        else:
+            rewrite_used = needs_rewrite(decision.question, session.history)
+            standalone_query = rewrite(decision.question, session.history) \
+                               if rewrite_used else decision.question
         yield emit({"type": "tool", "query": standalone_query})
         if is_ambiguous_card_maintenance(standalone_query):
             sessions.record(
@@ -564,13 +584,13 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             yield from emit_policy_message(refusal)
             yield done_event(outcome)
             return
-        # ---- Answerability / abstain (the "answer | abstain" box) ----
+        # ---- Answerability / abstain (3-way gate — Step 6) ----
         # Retrieval admitted evidence, but before generation we check whether that
-        # evidence actually ANSWERS the question. If not, abstain deterministically
-        # (no model call, no hallucination risk). Deferred piece from the pipeline
-        # diagram; implemented in core/answerability.py.
-        can_answer, abstain_reason = answerable(standalone_query, hits)
-        if not can_answer:
+        # evidence actually ANSWERS the question. judge() classifies into
+        # SUPPORTED / PARTIALLY_SUPPORTED / UNSUPPORTED; only UNSUPPORTED
+        # abstains deterministically (no model call, no hallucination risk).
+        support_level, abstain_reason = judge(standalone_query, hits)
+        if support_level == "UNSUPPORTED":
             sessions.record(
                 session, decision.question, ABSTAIN_MESSAGE, Outcome.UNSUPPORTED,
             )
@@ -596,6 +616,7 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             prior_answer=session.last_answer,
         ))
         full_answer = " ".join(answer_parts).strip()
+        answer_text = answer_display = None
         if not full_answer:
             answer = NO_EVIDENCE_MESSAGE
             outcome = Outcome.UNSUPPORTED
@@ -615,8 +636,13 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 yield emit({"type": "approved_sentence", "text": sentence})
             answer = full_answer
             outcome = Outcome.ANSWER
+            # Step 9 split: answer_text = plain speakable prose (TTS/voice);
+            # answer_display = browser-renderable form (same prose today).
+            answer_text = full_answer
+            answer_display = full_answer
         sessions.record(session, decision.question, answer, outcome)
-        yield done_event(outcome, sources=list(sources.values()))
+        yield done_event(outcome, sources=list(sources.values()),
+                         answer_text=answer_text, answer_display=answer_display)
     except GeneratorExit:
         outcome = Outcome.ABANDONED
         handoff_reason = "client_disconnect"

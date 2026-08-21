@@ -19,7 +19,7 @@ PRICE_INTENT = ("sa esht", "sa eshte", "sa kushton", "sa paguaj", "cfare tarife"
                 "sa me kushton")
 
 NO_EVIDENCE_MESSAGE = (
-    "Nuk gjeta burim mjaftueshëm të lidhur në korpus për t’iu përgjigjur me "
+    "Nuk gjeta burim mjaftueshëm të lidhur për t’iu përgjigjur me "
     "besueshmëri. Nuk do të hamendësoj një përgjigje."
 )
 UNSAFE_INPUT_MESSAGE = (

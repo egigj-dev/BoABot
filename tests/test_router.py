@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 import core.callcenter as callcenter
+import core.router as router
 from core.callcenter import Outcome, decide
 
 
@@ -29,19 +30,45 @@ def _inject(monkeypatch, label):
 
 def test_router_labels_map_to_terminal_outcomes(monkeypatch) -> None:
     expectations = (
-        ("smalltalk",      Outcome.ANSWER,      False),
-        ("out_of_domain",  Outcome.UNSUPPORTED, False),
-        ("legal_advice",   Outcome.UNSUPPORTED, False),
-        ("account_action", Outcome.HANDOFF,     True),
-        ("incident",       Outcome.HANDOFF,     True),
-        ("clarify",        Outcome.CLARIFY,     False),
+        ("smalltalk",      Outcome.ANSWER,      False, "pershendetje"),
+        ("out_of_domain",  Outcome.UNSUPPORTED, False, "cfare eshte moti sot?"),
+        ("legal_advice",   Outcome.UNSUPPORTED, False, "a eshte e ligjshme kjo gjobë?"),
+        ("account_action", Outcome.HANDOFF,     True,  "mbyll llogarinë time"),
+        ("incident",       Outcome.HANDOFF,     True,  "kam humbur kartën"),
+        ("clarify",        Outcome.CLARIFY,     False, "cfare karte?"),
     )
-    for label, outcome, handoff in expectations:
+    for label, outcome, handoff, question in expectations:
         _inject(monkeypatch, label)
-        decision = decide("pyetje test", "", [])
+        decision = decide(question, "", [])
         assert decision.outcome is outcome, label
         assert decision.handoff is handoff, label
         assert decision.reason is not None, label
+
+
+def test_router_account_action_without_lexical_vocabulary_does_not_escalate(monkeypatch) -> None:
+    # Fail-closed: an LLM "account_action" on a turn with no deterministic
+    # account-action vocabulary ("nuk kam karte" is a negation, not an action)
+    # must NOT hand off to a human.
+    _inject(monkeypatch, "account_action")
+    decision = decide("nuk kam karte", "", [])
+    assert decision.outcome is Outcome.ANSWER  # negation floor fires first
+    assert decision.reason == "negation_statement"
+    # A genuinely action-y turn with the label still escalates.
+    _inject(monkeypatch, "account_action")
+    decision = decide("mbyll llogarinë time", "", [])
+    assert decision.outcome is Outcome.HANDOFF
+    assert decision.reason == "account_action"
+
+
+def test_router_clarify_uses_generic_not_card_message(monkeypatch) -> None:
+    # A general "clarify" label must ask the user to restate generically — it
+    # must NOT trigger the card-debit/credit script (that stays on the lexical
+    # is_ambiguous_card_maintenance path only).
+    _inject(monkeypatch, "clarify")
+    decision = decide("cfare do te thuash?", "", [])
+    assert decision.outcome is Outcome.CLARIFY
+    assert decision.message == callcenter.CLARIFY_MESSAGE
+    assert decision.message != callcenter.CARD_CLARIFY_MESSAGE
 
 
 def test_router_answer_falls_through_to_retrieval(monkeypatch) -> None:
@@ -68,6 +95,32 @@ def test_router_off_uses_lexical_fallback(monkeypatch) -> None:
     decision = decide("mbyll llogarinë time të depozitës së biznesit.", "", [])
     assert decision.outcome is Outcome.HANDOFF
     assert decision.reason == "account_action"
+
+
+def test_meta_help_questions_route_to_meta_not_retrieval(monkeypatch) -> None:
+    # Meta/help turns ("what can I ask?", "help") must deterministically get the
+    # continue-helping meta response — never retrieval, never the card script,
+    # even with the router OFF (the floor fires before the enable check).
+    for question in (
+        "cfare mund te te pyes per shembull?",
+        "si te pyes?",
+        "ndihme",
+        "cfare di te bej?",
+        "help",
+    ):
+        assert router.is_meta_help(question) is True, question
+        decision = decide(question, "", [])
+        assert decision.outcome is Outcome.ANSWER, question
+        assert decision.reason == "meta_followup", question
+
+
+def test_meta_help_does_not_capture_banking_questions() -> None:
+    # A real banking question must NOT be swallowed by the meta-help floor.
+    for question in (
+        "cfare eshte norma e interesit per depozita?",
+        "cfare ben Banka e Shqiperise per mbrojtjen e konsumatorit?",
+    ):
+        assert router.is_meta_help(question) is False, question
 
 
 def test_hypothetical_rights_account_question_not_handed_off(monkeypatch) -> None:
