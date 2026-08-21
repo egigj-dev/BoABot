@@ -91,14 +91,14 @@ Banka OTP Albania: 2.60"""
     assert guard.verify(sentence, (evidence,)).approved
 
 
-def test_server_authorizes_complete_sentences_and_rejects_wrong_values() -> None:
+def test_server_authorizes_complete_sentences_and_drops_wrong_values() -> None:
     hits = [{"doc": "Tarifat", "article": "", "text": "Komisioni është 10 EUR."}]
     assert list(authorized_sentences(iter(("Komisioni është ", "10 EUR. Tjetër.",)), hits)) == [
         "Komisioni është 10 EUR.",
         "Tjetër.",
     ]
-    with pytest.raises(RuntimeError, match="fidelity"):
-        list(authorized_sentences(iter(("Komisioni është 20 EUR.",)), hits))
+    # Soft-fail: an unverifiable sentence is dropped, not emitted.
+    assert list(authorized_sentences(iter(("Komisioni është 20 EUR.",)), hits)) == []
 
 
 def test_server_suppresses_exact_model_source_id_footer() -> None:

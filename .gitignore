@@ -17,6 +17,10 @@ chunks.jsonl
 embedded_old.parquet
 pdf_text.jsonl
 
+# Generated chunk rebuild / embedding intermediates (regenerable).
+chunks_input*.jsonl
+chunks_embeddings*.jsonl
+
 # Local backups and notebooks.
 api.py.orig
 callcenter.py.orig

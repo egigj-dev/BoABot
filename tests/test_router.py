@@ -1,0 +1,124 @@
+"""LLM turn-router: label routing + offline fallback behavior.
+
+The router (core/router.py) is OFF by default (BOABOT_LLM_ROUTER unset). These
+tests exercise the decide() seam with injected labels (router ON) and the
+lexical fallback (router OFF), so the whole matrix is deterministic and offline.
+"""
+
+import numpy as np
+import pytest
+
+import core.callcenter as callcenter
+from core.callcenter import Outcome, decide
+
+
+@pytest.fixture(autouse=True)
+def _offline_stubs(monkeypatch):
+    # Deterministic retrieval-path stubs; not exercised for terminal routes.
+    monkeypatch.setattr(callcenter, "_encode_question", lambda _t: np.zeros(1))
+    monkeypatch.setattr(callcenter, "_probe_score", lambda _e: None)
+    monkeypatch.setattr(callcenter, "_account_action_score", lambda _e: None)
+
+
+def _inject(monkeypatch, label):
+    monkeypatch.setattr(
+        callcenter, "_classify_turn",
+        lambda question, last_outcome=None, last_handoff=False: label,
+    )
+
+
+def test_router_labels_map_to_terminal_outcomes(monkeypatch) -> None:
+    expectations = (
+        ("smalltalk",      Outcome.ANSWER,      False),
+        ("out_of_domain",  Outcome.UNSUPPORTED, False),
+        ("legal_advice",   Outcome.UNSUPPORTED, False),
+        ("account_action", Outcome.HANDOFF,     True),
+        ("incident",       Outcome.HANDOFF,     True),
+        ("clarify",        Outcome.CLARIFY,     False),
+    )
+    for label, outcome, handoff in expectations:
+        _inject(monkeypatch, label)
+        decision = decide("pyetje test", "", [])
+        assert decision.outcome is outcome, label
+        assert decision.handoff is handoff, label
+        assert decision.reason is not None, label
+
+
+def test_router_answer_falls_through_to_retrieval(monkeypatch) -> None:
+    _inject(monkeypatch, "answer")
+    decision = decide("cila eshte norma e interesit per depozita?", "", [])
+    assert decision.outcome is None
+    assert decision.question  # clean question survives for retrieval
+
+
+def test_router_meta_followup_uses_prior_handoff(monkeypatch) -> None:
+    _inject(monkeypatch, "meta_followup")
+    decision = decide("pse duhet te trajtohet nga nje agjent?", "", [],
+                      Outcome.HANDOFF, True)
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.handoff is True
+    assert decision.reason == "meta_followup"
+
+
+def test_router_off_uses_lexical_fallback(monkeypatch) -> None:
+    # Router OFF: seam returns None -> old lexical routing must still work.
+    monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: None)
+    assert decide("si je?", "", []).outcome is Outcome.ANSWER
+    assert decide("si je?", "", []).reason == "smalltalk"
+    decision = decide("mbyll llogarinë time të depozitës së biznesit.", "", [])
+    assert decision.outcome is Outcome.HANDOFF
+    assert decision.reason == "account_action"
+
+
+def test_hypothetical_rights_account_question_not_handed_off(monkeypatch) -> None:
+    # Even when the router botches (says answer) for a rights question that
+    # contains account vocabulary, the hypothetical carve-out must NOT hand off.
+    _inject(monkeypatch, "answer")
+    decision = decide(
+        "A garanton Banka e Shqipërisë që banka ime nuk mund të më mbyllë llogarinë?",
+        "", [],
+    )
+    assert decision.outcome is None  # fall through to retrieval
+
+
+def test_genuine_account_request_backstops_even_if_router_botches(monkeypatch) -> None:
+    _inject(monkeypatch, "answer")  # router fails to see the account request
+    decision = decide("mbyll llogarinë time të depozitës së biznesit.", "", [])
+    assert decision.outcome is Outcome.HANDOFF
+    assert decision.reason == "account_action_backstop"
+
+
+# --- conversational-fragment floor (core/router.py, both ON and OFF) ---------
+
+def test_conversational_fragments_never_reach_retrieval() -> None:
+    # No seam mock: goes through the real classify_turn, whose fragment floor
+    # fires before the enabled/discarded checks — so even router-OFF (unset env)
+    # these must route to meta_followup and never fall through to retrieval.
+    for question in (
+        "pse?", "perse", "nuk te kuptoj", "nuk kuptoj",
+        "kjo nuk ishte pyetja ime", "c'behet ne pergjithesi?",
+    ):
+        decision = decide(question, "", [])
+        assert decision.outcome is Outcome.ANSWER, question
+        assert decision.reason == "meta_followup", question
+        assert decision.question, question
+
+
+def test_fragment_floor_preserves_prior_handoff_context() -> None:
+    decision = decide("pse?", "", [], Outcome.HANDOFF, True)
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.handoff is True
+    assert decision.reason == "meta_followup"
+
+
+def test_fragment_floor_does_not_swallow_domain_questions(monkeypatch) -> None:
+    # A "why" fragment that names a banking subject is a real query, not meta.
+    assert not callcenter_router_fragment("pse u rrit interesi i kredise?")
+    monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: None)
+    decision = decide("pse u rrit interesi i kredise?", "", [])
+    assert decision.outcome is None  # falls through to retrieval
+
+
+def callcenter_router_fragment(question: str) -> bool:
+    from core.router import is_conversational_fragment
+    return is_conversational_fragment(question)

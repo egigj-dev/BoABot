@@ -8,6 +8,7 @@ import requests
 from .retrieve import fetch_doc_article, retrieve
 from .text_norm import fold
 from .trust import NO_EVIDENCE_MESSAGE, trusted_hits
+from .answerability import ABSTAIN_MESSAGE, answerable
 
 API = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = os.environ.get("BOABOT_MODEL", "google/gemini-3.1-flash-lite")
@@ -50,10 +51,21 @@ SYSTEM = (
     "atë rresht, jep normën e interesit të regjistruar dhe jo një shumë monetare. "
     "Mos thuaj se informacioni mungon kur rreshti i saktë gjendet në materiale. "
     "Mos "
-    "shkruaj identifikues burimesh si rate_0088 në tekstin e përgjigjes; citimet "
+    "identifikues burimesh si rate_0088 në tekstin e përgjigjes; citimet "
     "mbarten veçmas në fushën sources të ngjarjes done. Ruaji shifrat pikërisht "
     "në formën e burimit, si 0.50 ose 2.00; mos i rrumbullakos, konverto ose "
-    "riformato."
+    "riformato. "
+    "Mos jep KËSHILLË LIGJORE. Nëse pyetja pyet se çfarë DUHET TË BËJË PYTËSI "
+    "në situatën e tij specifike, nëse AI ËSHTË PËRGJEGJËS, nëse një gjobë ose "
+    "klauzolë e caktuar ndaj tij është e ligjshme, ose çfarë mjeti ligjor mund "
+    "të kërkojë për rastin e tij (p.sh. \"a duhet ta paguaj?\", \"a jam "
+    "përgjegjës?\", \"a është e ligjshme kjo gjobë?\", \"a mund ta padis?\", "
+    "\"çfarë mund të kërkoj?\"), MOS përgjigju me përfundim ligjor. "
+    "Përgjigju se kjo është një çështje ligjore për situatën e tij të veçantë "
+    "dhe se për të drejtat dhe hapat e tij specifikë duhet të konsultohet me një "
+    "avokat ose me bankën e tij. Mos shkruaj në vetën e dytë (\"ju duhet\", "
+    "\"jeni përgjegjës\", \"keni të drejtë të kërkoni\") kur i drejtohesh "
+    "përdoruesit për një përfundim ligjor."
 )
 
 EVIDENCE_HEADER = (
@@ -155,7 +167,7 @@ def retrieve_evidence(query, history=None, query_embedding=None, embedded_query=
     search_query = query
     hits = retrieve(
         search_query, k=candidate_k, query_embedding=query_embedding,
-        embedded_query=embedded_query, mode="hybrid",
+        embedded_query=embedded_query, mode="dense",
     )
 
     pinned_ids: list[str] = []
@@ -214,6 +226,9 @@ def ask(question, history=None):
     )
     if refusal:
         return refusal, []
+    can_answer, _abstain_reason = answerable(standalone_query, hits)
+    if not can_answer:
+        return ABSTAIN_MESSAGE, []
     msgs = grounded_messages(standalone_query, history, hits)
     message = completion_message(_post({"model": MODEL, "messages": msgs}))
     msgs.append(message)

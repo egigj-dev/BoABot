@@ -30,7 +30,7 @@ def _run_turn(monkeypatch, caplog, *, decision=None, stream_raises=False,
     monkeypatch.setattr(api, "decide", lambda *a, **k: decision)
     monkeypatch.setattr(api, "needs_rewrite", lambda *a, **k: False)
     monkeypatch.setattr(api, "retrieve_evidence", lambda *a, **k: (
-        [{"id": "rate_0001", "doc": "Doc", "article": "", "url": "u", "text": "t", "dense_score": 0.9}],
+        [{"id": "rate_0001", "doc": "Doc", "article": "", "url": "u", "text": "t 2%", "dense_score": 0.9}],
         "",
     ))
     monkeypatch.setattr(api, "grounded_messages", lambda *a, **k: [])
@@ -89,7 +89,7 @@ def test_system_error_handoff_is_tagged_separately_from_policy(monkeypatch, capl
     assert done["handoff"] is False
 
 
-def test_late_fidelity_rejection_releases_no_partial_model_answer(monkeypatch, caplog):
+def test_late_fidelity_rejection_drops_only_unverified_sentence(monkeypatch, caplog):
     decision = Decision(
         None, question="Sa është komisioni te BKT?", query_embedding=np.zeros(1),
     )
@@ -100,8 +100,10 @@ def test_late_fidelity_rejection_releases_no_partial_model_answer(monkeypatch, c
         json.loads(event[6:]).get("text", "")
         for event in events if '"type": "token"' in event
     )
-    assert "Fjalia e parë" not in token_text
-    assert telemetry["outcome"] == "degraded"
+    assert "Fjalia e parë" in token_text
+    assert "20 EUR" not in token_text
+    assert telemetry["outcome"] == "answer"
+    assert telemetry["handoff"] is False
 
 
 def test_vetted_passages_require_server_side_bridge_secret(monkeypatch):

@@ -17,13 +17,15 @@ from pydantic import BaseModel, Field, field_validator
 
 from .rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
-from .callcenter import (CARD_CLARIFY_MESSAGE, Outcome, decide,
-                        is_ambiguous_card_maintenance, sessions)
+from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, Outcome,
+                        decide, is_ambiguous_card_maintenance, sessions)
 from .retrieve import embedding_stats
 from .retrieve import open_pool as open_retrieval_pool
 from .retrieve import shutdown as shutdown_retrieval
 from .retrieve import warmup as warmup_retrieval
 from .trust import NO_EVIDENCE_MESSAGE
+from .text_norm import fold as _fold_text
+from .answerability import ABSTAIN_MESSAGE, answerable
 from voice.shared.fidelity_guard import FidelityGuard
 from voice.shared.sentence_buffer import SentenceBuffer
 
@@ -37,6 +39,32 @@ _MODEL_SOURCE_IDS_RE = re.compile(
     r"^\s*sources?\s*:\s*\[(?:\s*(?:rate|reg)_\d+\s*,?)+\]\s*$",
     re.IGNORECASE,
 )
+# Post-generation all-or-nothing backstop: any generated sentence that DIRECTS a
+# legal conclusion at the caller (2nd-person "ju / you"), rather than a neutral
+# third-person statement of the law, turns "what the law says" into "what YOU
+# should do / whether YOU are liable" — i.e. personalized legal advice. The whole
+# turn must be replaced (a per-sentence soft-drop would leave a redacted advice
+# sentence standing). Model is primed to avoid these via rag.py SYSTEM; this is
+# defense-in-depth. Kept to specific 2nd-person legal constructions so benign uses
+# of "ju / Ju lutem" and neutral "klienti detyrohet" do not fire.
+_LEGAL_DIRECT_RE = re.compile(
+    r"\b(?:"
+    r"ju\s+duhet\b|"
+    r"duhet\s+te\s+paguani\b|"
+    r"jeni\s+pergjegjes\b|"
+    r"keni\s+te\s+drejte\s+te\b|"
+    r"keni\s+detyrim\b|"
+    r"detyrim\s+juaj\b|"
+    r"(?:duhet\s+te\s+|mund\s+te\s+)kerkoni\s+(?:demshperblim|kompensim)\b|"
+    r"mund\s+te\s+padisni\b|"
+    r"ju\s+mund\s+te\b"
+    r")\b",
+    re.I,
+)
+
+
+def _has_legal_advice_direct(text: str) -> bool:
+    return _LEGAL_DIRECT_RE.search(_fold_text(text)) is not None
 _fidelity_guard = FidelityGuard()
 
 
@@ -150,18 +178,19 @@ def authorized_sentences(token_stream, hits):
                 continue
             verdict = _fidelity_guard.verify_sources(sentence, evidence)
             if not verdict.approved:
-                if os.environ.get("BOABOT_FIDELITY_DEBUG") == "1":
-                    logger.warning("Rejected model sentence: %r", sentence)
-                raise RAGError(f"answer fidelity check failed: {verdict.reason}")
+                # Soft-fail: drop only this sentence, keep the rest of the
+                # answer. A single unverifiable sentence should not collapse
+                # the whole (already buffered) response into DEGRADED.
+                logger.warning("Dropped unverified sentence: %s", verdict.reason)
+                continue
             yield sentence
     for sentence in buffer.finish():
         if _MODEL_SOURCE_IDS_RE.fullmatch(sentence):
             continue
         verdict = _fidelity_guard.verify_sources(sentence, evidence)
         if not verdict.approved:
-            if os.environ.get("BOABOT_FIDELITY_DEBUG") == "1":
-                logger.warning("Rejected model sentence: %r", sentence)
-            raise RAGError(f"answer fidelity check failed: {verdict.reason}")
+            logger.warning("Dropped unverified sentence: %s", verdict.reason)
+            continue
         yield sentence
 
 
@@ -405,6 +434,7 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
     done_ms = None
     rewrite_used = False
     embedding_reused = False
+    abstain_reason = None
     top_score = None
     retrieval_source = None
     retrieval_stats: dict[str, Any] = {}
@@ -499,6 +529,20 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             yield from emit_policy_message(refusal)
             yield done_event(outcome)
             return
+        # ---- Answerability / abstain (the "answer | abstain" box) ----
+        # Retrieval admitted evidence, but before generation we check whether that
+        # evidence actually ANSWERS the question. If not, abstain deterministically
+        # (no model call, no hallucination risk). Deferred piece from the pipeline
+        # diagram; implemented in core/answerability.py.
+        can_answer, abstain_reason = answerable(standalone_query, hits)
+        if not can_answer:
+            sessions.record(
+                session, decision.question, ABSTAIN_MESSAGE, Outcome.UNSUPPORTED,
+            )
+            outcome = Outcome.UNSUPPORTED
+            yield from emit_policy_message(ABSTAIN_MESSAGE)
+            yield done_event(outcome, reason=abstain_reason)
+            return
         for hit in hits:
             item = source(hit)
             if include_vetted_text:
@@ -515,16 +559,25 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
         answer_parts = list(authorized_sentences(
             stream_answer(messages, session.session_id, usage), hits,
         ))
-        for index, sentence in enumerate(answer_parts):
-            piece = sentence if index == 0 else f" {sentence}"
-            yield emit({"type": "token", "text": piece})
-            yield emit({"type": "approved_sentence", "text": sentence})
-        answer = " ".join(answer_parts).strip()
-        if not answer:
+        full_answer = " ".join(answer_parts).strip()
+        if not full_answer:
             answer = NO_EVIDENCE_MESSAGE
             outcome = Outcome.UNSUPPORTED
             yield from emit_policy_message(answer)
+        elif _has_legal_advice_direct(full_answer):
+            # All-or-nothing: any caller-directed legal conclusion must replace
+            # the whole turn. A per-sentence drop would leave a redacted
+            # personal-advice sentence standing as an answer.
+            answer = LEGAL_ADVICE_MESSAGE
+            outcome = Outcome.UNSUPPORTED
+            handoff_reason = "legal_advice_postgen"
+            yield from emit_policy_message(answer)
         else:
+            for index, sentence in enumerate(answer_parts):
+                piece = sentence if index == 0 else f" {sentence}"
+                yield emit({"type": "token", "text": piece})
+                yield emit({"type": "approved_sentence", "text": sentence})
+            answer = full_answer
             outcome = Outcome.ANSWER
         sessions.record(session, decision.question, answer, outcome)
         yield done_event(outcome, sources=list(sources.values()))
@@ -556,6 +609,7 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             "outcome": outcome.value if outcome else Outcome.ABANDONED.value,
             "handoff": handoff,
             "handoff_reason": handoff_reason,
+            "abstain_reason": abstain_reason,
             "model": MODEL,
             "first_sse_ms": round(first_sse_ms if first_sse_ms is not None else final_ms, 3),
             "first_token_ms": round(first_token_ms if first_token_ms is not None else final_ms, 3),
