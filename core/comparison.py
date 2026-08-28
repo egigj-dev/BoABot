@@ -1,12 +1,14 @@
-"""Deterministic typed lookup for the closed commercial-bank rate catalog."""
+"""The structured seam may generalize only what the user explicitly left broad; it may never generalize what the parser failed to understand."""
 from __future__ import annotations
 
 import json
 import os
 import re
+from dataclasses import dataclass
+from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, NamedTuple, TypeAlias
+from typing import Generic, Literal, NamedTuple, TypeAlias, TypeVar
 
 from .text_norm import fold
 from .trust import PRICE_INTENT, bank_names as trusted_bank_names, issuer_of
@@ -36,6 +38,26 @@ Product: TypeAlias = Literal[
     "housing_credit", "deposit", "debit_card", "credit_card",
 ]
 Metric: TypeAlias = Literal["interest_rate", "fee", "penalty"]
+T = TypeVar("T")
+
+
+class SlotState(Enum):
+    EXPLICIT = "explicit"
+    INHERITED = "inherited"
+    WILDCARD = "wildcard"
+    MISSING = "missing"
+
+
+@dataclass(frozen=True)
+class ResolvedSlot(Generic[T]):
+    value: T | None
+    state: SlotState
+
+
+class StructuredIntentStatus(Enum):
+    FULL_STRUCTURED_INTENT = "full_structured_intent"
+    UNREPRESENTED_SEMANTICS = "unrepresented_semantics"
+    INSUFFICIENT_COMPARISON_DIMENSIONS = "insufficient_comparison_dimensions"
 
 
 class RateIntent(NamedTuple):
@@ -181,6 +203,9 @@ def _rate_rows() -> tuple[dict, ...]:
     with _RATE_TABLES_PATH.open(encoding="utf-8") as rate_file:
         for index, line in enumerate(rate_file):
             row = json.loads(line)
+            row.setdefault("customer_segment", None)
+            # Currency-specific pages will carry their own materialized value.
+            row.setdefault("currency", None)
             row["_id"] = f"rate_{index:04d}"
             rows.append(row)
     return tuple(rows)

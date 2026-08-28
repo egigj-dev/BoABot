@@ -85,6 +85,20 @@ class Outcome(str, Enum):
     ABANDONED = "abandoned"
 
 
+class ContextEffect(Enum):
+    PRESERVE = "preserve"
+    REPLACE = "replace"
+    CLEAR = "clear"
+
+
+class DecisionEvent(Enum):
+    context_inherited = "context_inherited"
+    query_rewritten = "query_rewritten"
+    structured_lookup = "structured_lookup"
+    unresolved_qualifier_detected = "unresolved_qualifier_detected"
+    fidelity_sentence_drop = "fidelity_sentence_drop"
+
+
 class DecisionReason(str, Enum):
     UNSAFE_INPUT = "unsafe_input"
     CREDENTIAL_DISCLOSURE = "credential_disclosure"
@@ -133,6 +147,7 @@ class Decision:
     rewritten_query: str | None = None  # Step 2b: standalone query from the fused router call (when ON).
     legal_flags: dict | None = None  # Step 10 groundwork: structured flags from the fused call, if any.
     rate_intent: RateIntent | None = None  # Typed key on the no-LLM structured path.
+    trace_flags: frozenset[DecisionEvent] = field(default_factory=frozenset, kw_only=True)
 
 @dataclass
 class Session:
