@@ -13,6 +13,7 @@ from .answerability import ABSTAIN_MESSAGE, answerable
 API = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = os.environ.get("BOABOT_MODEL", "google/gemini-3.1-flash-lite")
 MAX_QUERY_CHARS = 1_500
+_ENABLE = ("1", "true", "yes", "on")
 
 
 class RAGError(RuntimeError):
@@ -163,8 +164,25 @@ def grounded_messages(question, history, hits):
 
 
 def retrieve_evidence(query, history=None, query_embedding=None, embedded_query=None,
-                      k=5, stats=None):
+                      k=5, stats=None, rate_intent=None):
     """Return vetted evidence or a user-safe refusal message."""
+    if os.environ.get("BOABOT_COMPARISON_STRUCTURED", "").strip().lower() in _ENABLE:
+        from .comparison import structured_rate_hits
+
+        if rate_intent is not None:
+            structured_hits = structured_rate_hits(rate_intent, k=k)
+            if stats is not None:
+                stats.update({
+                    "dropped_hits": 0,
+                    "admission_reason": (
+                        "structured_rate" if structured_hits
+                        else "structured_rate_missing_key"
+                    ),
+                })
+            if not structured_hits:
+                return [], NO_EVIDENCE_MESSAGE
+            return structured_hits, ""
+
     if query_embedding is not None:
         assert embedded_query is not None, "embedding source text is required"
         assert query.encode("utf-8") == embedded_query.encode("utf-8"), \
@@ -172,6 +190,23 @@ def retrieve_evidence(query, history=None, query_embedding=None, embedded_query=
     folded_query = fold(query)
     candidate_k = max(k, 10)
     search_query = query
+    # [SUPERSEDED] The comparison_intent()/query_rate_tables() ranked branch
+    # formerly lived here, after embedding validation. Typed resolution above
+    # now runs first and makes every recognized miss terminal.
+    # if os.environ.get("BOABOT_COMPARISON_STRUCTURED", "").strip().lower() in _ENABLE:
+    #     from .comparison import comparison_intent, query_rate_tables
+    #
+    #     comparison = comparison_intent(search_query)
+    #     if comparison is not None:
+    #         structured_hits = query_rate_tables(search_query, comparison.bank_names, k)
+    #         if stats is not None:
+    #             stats.update({
+    #                 "dropped_hits": 0,
+    #                 "admission_reason": "structured_rate" if structured_hits else "no_hits",
+    #             })
+    #         if not structured_hits:
+    #             return [], NO_EVIDENCE_MESSAGE
+    #         return structured_hits, ""
     hits = retrieve(
         search_query, k=candidate_k, query_embedding=query_embedding,
         embedded_query=embedded_query, mode="dense",
@@ -218,7 +253,7 @@ def retrieve_evidence(query, history=None, query_embedding=None, embedded_query=
 
 def ask(question, history=None):
     """Compatibility wrapper that uses the same router as the authoritative API."""
-    from callcenter import decide
+    from .callcenter import decide
 
     history = history or []
     last_answer = next((
@@ -229,19 +264,28 @@ def ask(question, history=None):
     if routing.outcome is not None:
         return routing.message, []
     question = routing.question
-    standalone_query = rewrite(question, history) if needs_rewrite(question, history) \
-                       else question
+    rate_intent = getattr(routing, "rate_intent", None)
+    standalone_query = question if rate_intent is not None else (
+        rewrite(question, history) if needs_rewrite(question, history) else question
+    )
     byte_identical = standalone_query.encode("utf-8") == question.encode("utf-8")
     hits, refusal = retrieve_evidence(
         standalone_query, history,
-        query_embedding=routing.query_embedding if byte_identical else None,
-        embedded_query=question if byte_identical else None,
+        query_embedding=(routing.query_embedding if byte_identical and rate_intent is None
+                         else None),
+        embedded_query=(question if byte_identical and rate_intent is None else None),
+        rate_intent=rate_intent,
     )
     if refusal:
         return refusal, []
-    can_answer, _abstain_reason = answerable(standalone_query, hits)
+    can_answer, _abstain_reason = answerable(
+        standalone_query, hits, rate_intent=rate_intent,
+    )
     if not can_answer:
         return ABSTAIN_MESSAGE, []
+    if rate_intent is not None:
+        from .comparison import render_rate_answer
+        return render_rate_answer(rate_intent, hits), []
     msgs = grounded_messages(standalone_query, history, hits)
     message = completion_message(_post({"model": MODEL, "messages": msgs}))
     msgs.append(message)

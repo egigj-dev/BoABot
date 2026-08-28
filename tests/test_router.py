@@ -10,7 +10,7 @@ import pytest
 
 import core.callcenter as callcenter
 import core.router as router
-from core.callcenter import Outcome, decide
+from core.callcenter import DecisionReason, Outcome, decide
 
 
 @pytest.fixture(autouse=True)
@@ -52,12 +52,12 @@ def test_router_account_action_without_lexical_vocabulary_does_not_escalate(monk
     _inject(monkeypatch, "account_action")
     decision = decide("nuk kam karte", "", [])
     assert decision.outcome is Outcome.ANSWER  # negation floor fires first
-    assert decision.reason == "negation_statement"
+    assert decision.reason is DecisionReason.NEGATION_STATEMENT
     # A genuinely action-y turn with the label still escalates.
     _inject(monkeypatch, "account_action")
     decision = decide("mbyll llogarinë time", "", [])
     assert decision.outcome is Outcome.HANDOFF
-    assert decision.reason == "account_action"
+    assert decision.reason is DecisionReason.SEMANTIC_ACCOUNT_ACTION
 
 
 def test_router_clarify_uses_generic_not_card_message(monkeypatch) -> None:
@@ -78,23 +78,82 @@ def test_router_answer_falls_through_to_retrieval(monkeypatch) -> None:
     assert decision.question  # clean question survives for retrieval
 
 
+def test_router_on_catalog_is_terminal_and_uses_trusted_names(monkeypatch) -> None:
+    _inject(monkeypatch, "catalog")
+    monkeypatch.setattr(callcenter, "bank_names", lambda: ("credins", "otp"))
+    monkeypatch.setattr(
+        callcenter, "_encode_question",
+        lambda _text: pytest.fail("catalog must not reach the retrieval answer path"),
+    )
+    decision = decide("cilat banka operojnë në Shqipëri?", "", [])
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.reason is DecisionReason.BANK_CATALOG_LIST
+    assert "Credins" in decision.message
+    assert "OTP" in decision.message
+
+
+def test_router_off_catalog_uses_lexical_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(callcenter, "_analyze_turn", lambda *a, **k: None)
+    monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: None)
+    monkeypatch.setattr(callcenter, "bank_names", lambda: ("credins", "otp"))
+    monkeypatch.setattr(
+        callcenter, "_encode_question",
+        lambda _text: pytest.fail("catalog must not reach the retrieval answer path"),
+    )
+    decision = decide("cilat banka operojne ne shqiperi?", "", [])
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.reason is DecisionReason.BANK_CATALOG_LIST
+    assert decision.message.endswith("Credins, OTP.")
+
+
+def test_router_catalog_label_on_fee_question_falls_through_to_retrieval(monkeypatch) -> None:
+    """Guards against LLM catalog over-generalization onto fee/tariff questions.
+
+    The catalog branch is now fail-closed behind _is_catalog_speech, so a model
+    misfiring "catalog" on a fee/tariff/role question must fall through to
+    retrieval instead of silently replacing a grounded RAG answer with the
+    canned bank list.
+    """
+    _inject(monkeypatch, "catalog")
+    monkeypatch.setattr(callcenter, "bank_names", lambda: ("credins", "otp"))
+    decision = decide("Cilat jane tarifat e kartave te debitit?", "", [])
+    assert decision.outcome is None
+    assert decision.reason is DecisionReason.DENSE_RETRIEVAL
+    assert decision.question  # falls through to retrieval intact
+
+
+def test_catalog_empty_names_degrades_to_normal_answer_path(monkeypatch) -> None:
+    _inject(monkeypatch, "catalog")
+    monkeypatch.setattr(callcenter, "bank_names", lambda: ())
+    decision = decide("cilat banka operojne ne shqiperi?", "", [])
+    assert decision.outcome is None
+    assert decision.question
+
+
+def test_catalog_lexical_floor_does_not_capture_one_bank_tariffs() -> None:
+    assert callcenter._is_catalog_speech("tarifat e Intesa") is False
+    assert callcenter._is_catalog_speech(
+        "cila bankë ka tarifën më të ulët në Shqipëri?"
+    ) is False
+
+
 def test_router_meta_followup_uses_prior_handoff(monkeypatch) -> None:
     _inject(monkeypatch, "meta_followup")
     decision = decide("pse duhet te trajtohet nga nje agjent?", "", [],
                       Outcome.HANDOFF, True)
     assert decision.outcome is Outcome.ANSWER
     assert decision.handoff is True
-    assert decision.reason == "meta_followup"
+    assert decision.reason is DecisionReason.SEMANTIC_META_FOLLOWUP
 
 
 def test_router_off_uses_lexical_fallback(monkeypatch) -> None:
     # Router OFF: seam returns None -> old lexical routing must still work.
     monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: None)
     assert decide("si je?", "", []).outcome is Outcome.ANSWER
-    assert decide("si je?", "", []).reason == "smalltalk"
+    assert decide("si je?", "", []).reason is DecisionReason.SEMANTIC_SMALLTALK
     decision = decide("mbyll llogarinë time të depozitës së biznesit.", "", [])
     assert decision.outcome is Outcome.HANDOFF
-    assert decision.reason == "account_action"
+    assert decision.reason is DecisionReason.SEMANTIC_ACCOUNT_ACTION
 
 
 def test_meta_help_questions_route_to_meta_not_retrieval(monkeypatch) -> None:
@@ -111,7 +170,7 @@ def test_meta_help_questions_route_to_meta_not_retrieval(monkeypatch) -> None:
         assert router.is_meta_help(question) is True, question
         decision = decide(question, "", [])
         assert decision.outcome is Outcome.ANSWER, question
-        assert decision.reason == "meta_followup", question
+        assert decision.reason is DecisionReason.FRAGMENT_META, question
 
 
 def test_meta_help_does_not_capture_banking_questions() -> None:
@@ -138,7 +197,7 @@ def test_genuine_account_request_backstops_even_if_router_botches(monkeypatch) -
     _inject(monkeypatch, "answer")  # router fails to see the account request
     decision = decide("mbyll llogarinë time të depozitës së biznesit.", "", [])
     assert decision.outcome is Outcome.HANDOFF
-    assert decision.reason == "account_action_backstop"
+    assert decision.reason is DecisionReason.ACCOUNT_ACTION_BACKSTOP
 
 
 # --- conversational-fragment floor (core/router.py, both ON and OFF) ---------
@@ -153,7 +212,7 @@ def test_conversational_fragments_never_reach_retrieval() -> None:
     ):
         decision = decide(question, "", [])
         assert decision.outcome is Outcome.ANSWER, question
-        assert decision.reason == "meta_followup", question
+        assert decision.reason is DecisionReason.FRAGMENT_META, question
         assert decision.question, question
 
 
@@ -161,7 +220,7 @@ def test_fragment_floor_preserves_prior_handoff_context() -> None:
     decision = decide("pse?", "", [], Outcome.HANDOFF, True)
     assert decision.outcome is Outcome.ANSWER
     assert decision.handoff is True
-    assert decision.reason == "meta_followup"
+    assert decision.reason is DecisionReason.FRAGMENT_META
 
 
 def test_fragment_floor_does_not_swallow_domain_questions(monkeypatch) -> None:

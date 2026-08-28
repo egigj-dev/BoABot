@@ -8,7 +8,7 @@ remedy they can pursue in their own case).
 
 import core.api as api
 import core.callcenter as callcenter
-from core.callcenter import Outcome, decide
+from core.callcenter import DecisionReason, Outcome, decide
 
 
 # --- decide() lexical floor (item 1) ----------------------------------------
@@ -46,7 +46,7 @@ def test_explicit_personal_legal_advice_is_deflected() -> None:
     for question in LEAK_QUESTIONS:
         decision = decide(question, "", [])
         assert decision.outcome is Outcome.UNSUPPORTED, question
-        assert decision.reason == "legal_advice_explicit", question
+        assert decision.reason is DecisionReason.LEGAL_ADVICE_EXPLICIT, question
         assert not decision.handoff, question
 
 

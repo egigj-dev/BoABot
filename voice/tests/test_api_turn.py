@@ -11,7 +11,7 @@ import logging
 import numpy as np
 
 import core.api as api
-from core.callcenter import Decision, Outcome
+from core.callcenter import Decision, DecisionReason, Outcome
 from core.rag import RAGError
 
 
@@ -64,12 +64,15 @@ def _run_turn(monkeypatch, caplog, *, decision=None, stream_raises=False,
 
 
 def test_policy_handoff_is_tagged_in_telemetry(monkeypatch, caplog):
-    decision = Decision(Outcome.HANDOFF, "handoff", handoff=True, reason="credential")
+    decision = Decision(
+        Outcome.HANDOFF, "handoff", handoff=True,
+        reason=DecisionReason.CREDENTIAL_DISCLOSURE,
+    )
     events, telemetry = _run_turn(monkeypatch, caplog, decision=decision)
 
     assert telemetry["outcome"] == "handoff"
     assert telemetry["handoff"] is True
-    assert telemetry["handoff_reason"] == "credential"
+    assert telemetry["handoff_reason"] == "credential_disclosure"
     done = [json.loads(e[6:]) for e in events if '"type": "done"' in e][0]
     assert done["outcome"] == "handoff"
     assert done["handoff"] is True
@@ -78,12 +81,13 @@ def test_policy_handoff_is_tagged_in_telemetry(monkeypatch, caplog):
 def test_system_error_handoff_is_tagged_separately_from_policy(monkeypatch, caplog):
     decision = Decision(
         None, question="Sa është komisioni te BKT?", query_embedding=np.zeros(1),
+        reason=DecisionReason.DENSE_RETRIEVAL,
     )
     events, telemetry = _run_turn(monkeypatch, caplog, decision=decision, stream_raises=True)
 
     assert telemetry["outcome"] == "degraded"
     assert telemetry["handoff"] is False
-    assert telemetry["handoff_reason"] == "degraded"
+    assert telemetry["handoff_reason"] == "provider_error"
     done = [json.loads(e[6:]) for e in events if '"type": "done"' in e][0]
     assert done["outcome"] == "degraded"
     assert done["handoff"] is False
@@ -92,6 +96,7 @@ def test_system_error_handoff_is_tagged_separately_from_policy(monkeypatch, capl
 def test_late_fidelity_rejection_drops_only_unverified_sentence(monkeypatch, caplog):
     decision = Decision(
         None, question="Sa është komisioni te BKT?", query_embedding=np.zeros(1),
+        reason=DecisionReason.DENSE_RETRIEVAL,
     )
     events, telemetry = _run_turn(
         monkeypatch, caplog, decision=decision, reject_after_first=True,

@@ -18,8 +18,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from .rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
-from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, Outcome,
-                        decide, is_ambiguous_card_maintenance, sessions)
+from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, DecisionReason,
+                        Outcome, decide, is_ambiguous_card_maintenance, sessions)
 from .retrieve import embedding_stats
 from .retrieve import open_pool as open_retrieval_pool
 from .retrieve import shutdown as shutdown_retrieval
@@ -533,44 +533,51 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             )
             outcome = decision.outcome
             handoff = decision.handoff
-            handoff_reason = decision.reason or None
+            handoff_reason = decision.reason.value
             yield from emit_policy_message(decision.message)
             yield done_event(outcome, handoff=handoff,
                              pii_redacted=decision.pii_redacted,
-                             reason=decision.reason or None)
+                             reason=decision.reason.value)
             return
 
-        # Step 2b: when the fused router (ON) supplied a standalone query, use
-        # it directly and skip the separate needs_rewrite()/rewrite() pair — the
-        # fused call already rewrote in the same model round-trip as the intent.
-        fused_rewrite = getattr(decision, "rewritten_query", None) or None
-        if fused_rewrite:
-            standalone_query = fused_rewrite
-            rewrite_used = True
+        rate_intent = getattr(decision, "rate_intent", None)
+        # A carried typed key is already standalone and must bypass every rewrite
+        # and embedding seam. The fused LLM router never ran on this path.
+        if rate_intent is not None:
+            standalone_query = decision.question
         else:
-            rewrite_used = needs_rewrite(decision.question, session.history)
-            standalone_query = rewrite(decision.question, session.history) \
-                               if rewrite_used else decision.question
+            # Step 2b: when the fused router (ON) supplied a standalone query,
+            # use it directly and skip the separate rewrite call.
+            fused_rewrite = getattr(decision, "rewritten_query", None) or None
+            if fused_rewrite:
+                standalone_query = fused_rewrite
+                rewrite_used = True
+            else:
+                rewrite_used = needs_rewrite(decision.question, session.history)
+                standalone_query = rewrite(decision.question, session.history) \
+                                   if rewrite_used else decision.question
         yield emit({"type": "tool", "query": standalone_query})
-        if is_ambiguous_card_maintenance(standalone_query):
+        if rate_intent is None and is_ambiguous_card_maintenance(standalone_query):
             sessions.record(
                 session, decision.question, CARD_CLARIFY_MESSAGE, Outcome.CLARIFY,
             )
             outcome = Outcome.CLARIFY
+            handoff_reason = DecisionReason.REWRITE_CARD_CLARIFY.value
             yield from emit_policy_message(CARD_CLARIFY_MESSAGE)
-            yield done_event(outcome)
+            yield done_event(outcome, reason=handoff_reason)
             return
         byte_identical = standalone_query.encode("utf-8") == decision.question.encode("utf-8")
-        if byte_identical:
+        if byte_identical and rate_intent is None:
             assert decision.query_embedding is not None
-        embedding_reused = byte_identical
-        query_embedding = decision.query_embedding if byte_identical else None
+        embedding_reused = byte_identical and rate_intent is None
+        query_embedding = decision.query_embedding if embedding_reused else None
         hits, refusal = retrieve_evidence(
             standalone_query,
             session.history,
             query_embedding=query_embedding,
             embedded_query=decision.question if query_embedding is not None else None,
             stats=retrieval_stats,
+            rate_intent=rate_intent,
         )
         if hits:
             retrieval_source = str(hits[0].get("retrieval_source") or "dense")
@@ -581,22 +588,29 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
         if refusal:
             sessions.record(session, decision.question, refusal, Outcome.UNSUPPORTED)
             outcome = Outcome.UNSUPPORTED
+            handoff_reason = (
+                DecisionReason.CATALOG_MISSING_KEY.value if rate_intent is not None
+                else DecisionReason.DENSE_NO_TRUSTED_HITS.value
+            )
             yield from emit_policy_message(refusal)
-            yield done_event(outcome)
+            yield done_event(outcome, reason=handoff_reason)
             return
         # ---- Answerability / abstain (3-way gate — Step 6) ----
         # Retrieval admitted evidence, but before generation we check whether that
         # evidence actually ANSWERS the question. judge() classifies into
         # SUPPORTED / PARTIALLY_SUPPORTED / UNSUPPORTED; only UNSUPPORTED
         # abstains deterministically (no model call, no hallucination risk).
-        support_level, abstain_reason = judge(standalone_query, hits)
+        support_level, abstain_reason = judge(
+            standalone_query, hits, rate_intent=rate_intent,
+        )
         if support_level == "UNSUPPORTED":
             sessions.record(
                 session, decision.question, ABSTAIN_MESSAGE, Outcome.UNSUPPORTED,
             )
             outcome = Outcome.UNSUPPORTED
+            handoff_reason = DecisionReason.ANSWERABILITY_ABSTAIN.value
             yield from emit_policy_message(ABSTAIN_MESSAGE)
-            yield done_event(outcome, reason=abstain_reason)
+            yield done_event(outcome, reason=handoff_reason)
             return
         for hit in hits:
             item = source(hit)
@@ -604,6 +618,33 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 # Full passages are available only after server-side bridge auth.
                 item["passage_text"] = hit["text"]
             sources[item["id"]] = item
+
+        if rate_intent is not None:
+            from .comparison import render_rate_answer
+
+            answer = render_rate_answer(rate_intent, hits)
+            if not answer:
+                abstain_reason = "structured_rate_empty_render"
+                outcome = Outcome.UNSUPPORTED
+                handoff_reason = DecisionReason.STRUCTURED_EMPTY_RENDER.value
+                answer = NO_EVIDENCE_MESSAGE
+                yield from emit_policy_message(answer)
+            else:
+                # [SUPERSEDED] Structured rows previously flowed through
+                # grounded_messages -> stream_answer -> authorized_sentences.
+                # The exact renderer is now the authority for this typed path.
+                yield emit({"type": "token", "text": answer})
+                yield emit({"type": "approved_sentence", "text": answer})
+                outcome = Outcome.ANSWER
+                handoff_reason = DecisionReason.CATALOG_EXACT_HIT.value
+            sessions.record(session, decision.question, answer, outcome)
+            yield done_event(
+                outcome, sources=list(sources.values()),
+                answer_text=answer if outcome is Outcome.ANSWER else None,
+                answer_display=answer if outcome is Outcome.ANSWER else None,
+                reason=handoff_reason,
+            )
+            return
         # Generation must see the same standalone query that selected the
         # evidence. Passing an elliptical original (for example "Dhe neni 7?")
         # made the model occasionally ignore an exact article hit.
@@ -620,6 +661,7 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
         if not full_answer:
             answer = NO_EVIDENCE_MESSAGE
             outcome = Outcome.UNSUPPORTED
+            handoff_reason = DecisionReason.EMPTY_ANSWER.value
             yield from emit_policy_message(answer)
         elif _has_legal_advice_direct(full_answer):
             # All-or-nothing: any caller-directed legal conclusion must replace
@@ -627,7 +669,7 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             # personal-advice sentence standing as an answer.
             answer = LEGAL_ADVICE_MESSAGE
             outcome = Outcome.UNSUPPORTED
-            handoff_reason = "legal_advice_postgen"
+            handoff_reason = DecisionReason.LEGAL_ADVICE_POSTGEN.value
             yield from emit_policy_message(answer)
         else:
             for index, sentence in enumerate(answer_parts):
@@ -636,33 +678,35 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 yield emit({"type": "approved_sentence", "text": sentence})
             answer = full_answer
             outcome = Outcome.ANSWER
+            handoff_reason = DecisionReason.DENSE_ANSWER.value
             # Step 9 split: answer_text = plain speakable prose (TTS/voice);
             # answer_display = browser-renderable form (same prose today).
             answer_text = full_answer
             answer_display = full_answer
         sessions.record(session, decision.question, answer, outcome)
         yield done_event(outcome, sources=list(sources.values()),
-                         answer_text=answer_text, answer_display=answer_display)
+                         answer_text=answer_text, answer_display=answer_display,
+                         reason=handoff_reason)
     except GeneratorExit:
         outcome = Outcome.ABANDONED
-        handoff_reason = "client_disconnect"
+        handoff_reason = DecisionReason.CLIENT_DISCONNECT.value
         raise
     except RAGError:
         logger.exception("Recoverable RAG error while serving /turn")
         question = decision.question if decision and decision.question else req.question
         sessions.record(session, question, DEGRADED_MESSAGE, Outcome.DEGRADED)
         outcome = Outcome.DEGRADED
-        handoff_reason = "degraded"
+        handoff_reason = DecisionReason.PROVIDER_ERROR.value
         yield from emit_policy_message(DEGRADED_MESSAGE)
-        yield done_event(outcome, reason="degraded")
+        yield done_event(outcome, reason=handoff_reason)
     except Exception:
         logger.exception("Unexpected error while serving /turn")
         question = decision.question if decision and decision.question else req.question
         sessions.record(session, question, DEGRADED_MESSAGE, Outcome.DEGRADED)
         outcome = Outcome.DEGRADED
-        handoff_reason = "degraded"
+        handoff_reason = DecisionReason.INTERNAL_ERROR.value
         yield from emit_policy_message(DEGRADED_MESSAGE)
-        yield done_event(outcome, reason="degraded")
+        yield done_event(outcome, reason=handoff_reason)
     finally:
         final_ms = (time.perf_counter() - started) * 1000
         prompt_details = usage.get("prompt_tokens_details") or {}

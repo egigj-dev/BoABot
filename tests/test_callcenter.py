@@ -5,7 +5,7 @@ import re
 import numpy as np
 
 import core.callcenter as callcenter
-from core.callcenter import Outcome, decide
+from core.callcenter import DecisionReason, Outcome, decide
 
 
 def _positive_classifier(monkeypatch) -> None:
@@ -22,7 +22,7 @@ def test_price_shaped_account_questions_cannot_bypass_classifier(monkeypatch) ->
     ):
         decision = decide(question, "", [])
         assert decision.outcome is Outcome.HANDOFF
-        assert decision.reason == "account_action"
+        assert decision.reason is DecisionReason.SEMANTIC_ACCOUNT_ACTION
 
 
 def test_exported_classifier_routes_the_two_audited_account_probes() -> None:
@@ -32,7 +32,7 @@ def test_exported_classifier_routes_the_two_audited_account_probes() -> None:
     ):
         decision = decide(question, "", [])
         assert decision.outcome is Outcome.HANDOFF
-        assert decision.reason == "account_action"
+        assert decision.reason is DecisionReason.SEMANTIC_ACCOUNT_ACTION
 
 
 def test_pan_is_redacted_before_card_disambiguation(monkeypatch) -> None:
@@ -41,7 +41,7 @@ def test_pan_is_redacted_before_card_disambiguation(monkeypatch) -> None:
         "Sa kushton mirëmbajtja e kartës 4111111111111111 te BKT?", "", [],
     )
     assert decision.outcome is Outcome.HANDOFF
-    assert decision.reason == "pii"
+    assert decision.reason is DecisionReason.PII_DETECTED
     assert not re.search(r"\d{8,}", decision.question)
 
 
@@ -51,7 +51,7 @@ def test_account_action_outranks_business_deposit_coverage(monkeypatch) -> None:
         "Mbylle llogarinë time të depozitës së biznesit.", "", [],
     )
     assert decision.outcome is Outcome.HANDOFF
-    assert decision.reason == "account_action"
+    assert decision.reason is DecisionReason.SEMANTIC_ACCOUNT_ACTION
 
 
 def test_repeat_preserves_a_pending_transfer_flag() -> None:

@@ -3,20 +3,25 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import threading
 import time
 import uuid
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .retrieve import EMBEDDING_MODEL_NAME, model
 from .text_norm import fold, restore_diacritics
-from .trust import UNSAFE_INPUT_MESSAGE, input_gate
+from .trust import NO_EVIDENCE_MESSAGE, UNSAFE_INPUT_MESSAGE, bank_names, input_gate
+
+if TYPE_CHECKING:
+    from .comparison import RateIntent
 
 MAX_HISTORY_MESSAGES = 12
 SESSION_TTL_SECONDS = 60 * 60
@@ -79,6 +84,42 @@ class Outcome(str, Enum):
     DEGRADED = "degraded"
     ABANDONED = "abandoned"
 
+
+class DecisionReason(str, Enum):
+    UNSAFE_INPUT = "unsafe_input"
+    CREDENTIAL_DISCLOSURE = "credential_disclosure"
+    PII_DETECTED = "pii_detected"
+    REPEAT = "repeat"
+    LEGAL_ADVICE_EXPLICIT = "legal_advice_explicit"
+    LEGAL_ADVICE_POSTGEN = "legal_advice_postgen"
+    NEGATION_STATEMENT = "negation_statement"
+    FRAGMENT_META = "fragment_meta"
+    BANK_CATALOG_LIST = "bank_catalog_list"
+    CATALOG_EXACT_HIT = "catalog_exact_hit"
+    CATALOG_UNKNOWN_BANK = "catalog_unknown_bank"
+    CATALOG_CONFLICTING_SLOTS = "catalog_conflicting_slots"
+    CATALOG_MISSING_KEY = "catalog_missing_key"
+    SEMANTIC_INCIDENT = "semantic_incident"
+    SEMANTIC_ACCOUNT_ACTION = "semantic_account_action"
+    SEMANTIC_SMALLTALK = "semantic_smalltalk"
+    SEMANTIC_OUT_OF_DOMAIN = "semantic_out_of_domain"
+    SEMANTIC_LEGAL_ADVICE = "semantic_legal_advice"
+    SEMANTIC_CLARIFY = "semantic_clarify"
+    SEMANTIC_META_FOLLOWUP = "semantic_meta_followup"
+    ACCOUNT_ACTION_BACKSTOP = "account_action_backstop"
+    INCIDENT_BACKSTOP = "incident_backstop"
+    DENSE_RETRIEVAL = "dense_retrieval"
+    REWRITE_CARD_CLARIFY = "rewrite_card_clarify"
+    DENSE_ANSWER = "dense_answer"
+    DENSE_NO_TRUSTED_HITS = "dense_no_trusted_hits"
+    ANSWERABILITY_ABSTAIN = "answerability_abstain"
+    EMPTY_ANSWER = "empty_answer"
+    STRUCTURED_EMPTY_RENDER = "structured_empty_render"
+    CLIENT_DISCONNECT = "client_disconnect"
+    PROVIDER_ERROR = "provider_error"
+    INTERNAL_ERROR = "internal_error"
+
+
 @dataclass(frozen=True)
 class Decision:
     outcome: Outcome | None
@@ -88,9 +129,10 @@ class Decision:
     pii_redacted: bool = False
     query_embedding: np.ndarray | None = None  # Normalized caller vector for downstream retrieval reuse.
     handoff_score: float | None = None  # Frozen positive-vs-negative neighbour margin.
-    reason: str = ""
+    reason: DecisionReason = field(kw_only=True)
     rewritten_query: str | None = None  # Step 2b: standalone query from the fused router call (when ON).
     legal_flags: dict | None = None  # Step 10 groundwork: structured flags from the fused call, if any.
+    rate_intent: RateIntent | None = None  # Typed key on the no-LLM structured path.
 
 @dataclass
 class Session:
@@ -237,23 +279,42 @@ _QUESTION_MARKER_RE = re.compile(
     re.I,
 )
 _DOMAIN_MARKER_RE = re.compile(
-    r"\b(?:bank|rregullore|komision|norm|tarif|kredi|depozit|kart|neni|shlyerje|"
-    r"interes|licenc|mbikeqyr)\w*",
+    r"\b(?:bank|rregullore|komision|norm|tarif|kredi|debit|depozit|kart|neni|shlyerje|"
+    r"interes|licenc|llogari|individ|biznes|mbikeqyr)\w*",
     re.I,
 )
 _INCIDENT_MARKER_RE = re.compile(
-    r"\b(?:humb|vjedh|vidh|bllok|pin|cvv|cvc|otp|kod|ikin|iken|dikush|mashtr|"
+    r"\b(?:humb\w*|vjedh\w*|vidh\w*|bllok|pin|cvv|cvc|otp|kod|ikin|iken|dikush|mashtr|"
     r"raportoj|kartel|ime|time|mua)\b",
     re.I,
 )
 
 
-def _is_informational_banking_query(text: str) -> bool:
+def _is_informational_banking_query(
+        text: str, last_outcome: Outcome | None = None) -> bool:
     folded = fold(text)
+    has_domain_marker = bool(_DOMAIN_MARKER_RE.search(folded))
+    has_incident_marker = bool(_INCIDENT_MARKER_RE.search(folded))
+    # [SUPERSEDED] The original informational check required both a question
+    # marker and a domain marker, so a bare answer to a CLARIFY prompt reached
+    # the incident probe:
+    # return (
+    #     bool(_QUESTION_MARKER_RE.search(folded))
+    #     and bool(_DOMAIN_MARKER_RE.search(folded))
+    #     and not _INCIDENT_MARKER_RE.search(folded)
+    # )
     return (
         bool(_QUESTION_MARKER_RE.search(folded))
-        and bool(_DOMAIN_MARKER_RE.search(folded))
-        and not _INCIDENT_MARKER_RE.search(folded)
+        and has_domain_marker
+        and not has_incident_marker
+    ) or (
+        # A domain-bearing fragment immediately after CLARIFY answers the
+        # disambiguation prompt; it is informational even without a question
+        # word. Incident/credential vocabulary retains precedence and still
+        # reaches the frozen incident probe below.
+        last_outcome == Outcome.CLARIFY
+        and has_domain_marker
+        and not has_incident_marker
     )
 
 
@@ -332,8 +393,42 @@ def _is_hypothetical_rights(text: str) -> bool:
     return _HYPOTHETICAL_RIGHTS_RE.search(fold(text)) is not None
 
 
+_CATALOG_SELECTOR_RE = re.compile(
+    r"\b(?:cilat?|kush|listo|lista|rendit)\b|\b(?:me|ma)\s+(?:thuaj|trego)\b",
+    re.I,
+)
+_CATALOG_PRESENCE_RE = re.compile(
+    r"\b(?:opero(?:n|j)|vepro(?:n|j)|ekzist|gjend)\w*\b|"
+    r"\b(?:ka|kane)\b|\bne\s+shqiperi\b",
+    re.I,
+)
+_CATALOG_PRICE_RE = re.compile(r"\b(?:tarif|komision|interes|norm|penalitet)\w*\b", re.I)
+
+
+def _is_catalog_speech(text: str) -> bool:
+    """Identify Albanian requests for the commercial-bank catalog."""
+    folded = fold(text)
+    return (
+        re.search(r"\bbank\w*\b", folded) is not None
+        and re.search(r"\bshqiperi\w*\b", folded) is not None
+        and _CATALOG_SELECTOR_RE.search(folded) is not None
+        and _CATALOG_PRESENCE_RE.search(folded) is not None
+        and _CATALOG_PRICE_RE.search(folded) is None
+    )
+
+
+def _catalog_message() -> str | None:
+    names = bank_names()
+    if not names:
+        return None
+    readable = [name.upper() if len(name) <= 3 else name.title() for name in names]
+    return "Bankat tregtare në Shqipëri janë: " + ", ".join(readable) + "."
+
+
 def _fallback_label(question: str) -> str:
     """Old lexical intent used when the router is off/unavailable."""
+    if _is_catalog_speech(question):
+        return "catalog"
     if _is_smalltalk(question):
         return "smalltalk"
     if _is_account_action(question):
@@ -345,19 +440,39 @@ def _fallback_label(question: str) -> str:
 
 def _route_label(label: str, question: str, last_handoff: bool) -> Decision | None:
     """Map a router label to a terminal Decision; return None to fall through."""
+    if label == "catalog":
+        # Fail-closed: an LLM "catalog" label only short-circuits to the canned
+        # bank list when the deterministic catalog vocabulary is actually
+        # present. The router prompt gives "catalog" only one exemplar (the
+        # bank-list ask), so a flash model over-generalizes it onto fee/tariff/
+        # role questions that merely mention "bankë". Re-checking keeps a wrong
+        # canned list from silently replacing a grounded RAG answer — the same
+        # fail-closed pattern as the account_action branch below ("false
+        # handoffs are the worst UX failure").
+        if not _is_catalog_speech(question):
+            return None
+        message = _catalog_message()
+        if message:
+            return Decision(Outcome.ANSWER, message, question=question,
+                            handoff=False, reason=DecisionReason.BANK_CATALOG_LIST)
+        return None
     if label == "smalltalk":
         return Decision(Outcome.ANSWER, _smalltalk_reply(question),
-                        question=question, handoff=False, reason="smalltalk")
+                        question=question, handoff=False,
+                        reason=DecisionReason.SEMANTIC_SMALLTALK)
     if label == "out_of_domain":
         return Decision(Outcome.UNSUPPORTED, OUT_OF_DOMAIN_MESSAGE,
-                        question=question, handoff=False, reason="out_of_domain")
+                        question=question, handoff=False,
+                        reason=DecisionReason.SEMANTIC_OUT_OF_DOMAIN)
     if label == "meta_followup":
         msg = META_FOLLOWUP_HANDOFF_MESSAGE if last_handoff else META_FOLLOWUP_MESSAGE
         return Decision(Outcome.ANSWER, msg, question=question,
-                        handoff=last_handoff, reason="meta_followup")
+                        handoff=last_handoff,
+                        reason=DecisionReason.SEMANTIC_META_FOLLOWUP)
     if label == "legal_advice":
         return Decision(Outcome.UNSUPPORTED, LEGAL_ADVICE_MESSAGE,
-                        question=question, handoff=False, reason="legal_advice_router")
+                        question=question, handoff=False,
+                        reason=DecisionReason.SEMANTIC_LEGAL_ADVICE)
     if label == "account_action":
         # Fail-closed: an LLM "account_action" only escalates when the
         # deterministic account-action vocabulary is actually present. Vague or
@@ -366,10 +481,10 @@ def _route_label(label: str, question: str, last_handoff: bool) -> Decision | No
         if not _is_account_action(question):
             return None
         return Decision(Outcome.HANDOFF, ACCOUNT_HANDOFF_MESSAGE,
-                        handoff=True, reason="account_action")
+                        handoff=True, reason=DecisionReason.SEMANTIC_ACCOUNT_ACTION)
     if label in ("incident", "incident_handoff"):
         return Decision(Outcome.HANDOFF, SECURITY_HANDOFF_MESSAGE,
-                        handoff=True, reason="incident_router")
+                        handoff=True, reason=DecisionReason.SEMANTIC_INCIDENT)
     if label == "clarify":
         # A generic "clarify" (confused / needs-disambiguation turn) asks the
         # user to restate — NOT the card-specific text. The card-debit/credit
@@ -380,7 +495,7 @@ def _route_label(label: str, question: str, last_handoff: bool) -> Decision | No
         msg = CARD_CLARIFY_MESSAGE if is_ambiguous_card_maintenance(question) \
             else CLARIFY_MESSAGE
         return Decision(Outcome.CLARIFY, msg, question=question,
-                        reason="disambiguation")
+                        reason=DecisionReason.SEMANTIC_CLARIFY)
     return None  # "answer" / unknown -> fall through to retrieval
 
 
@@ -477,12 +592,83 @@ def _is_account_action(question: str) -> bool:
     """Identify explicit requests about a caller's own account or card."""
     return _ACCOUNT_ACTION_RE.search(question) is not None
 
+
+_ENABLE = ("1", "true", "yes", "on")
+_ACTIVE_INCIDENT_FOR_RATE_RE = re.compile(
+    r"\b(?:humb\w*|vjedh\w*|vidh\w*|mashtr\w*|raportoj\w*|"
+    r"(?:me|mua)\s+ikin\w*|dikush)\b",
+    re.I,
+)
+
+
+def _structured_rate_enabled() -> bool:
+    return os.environ.get("BOABOT_COMPARISON_STRUCTURED", "").strip().lower() in _ENABLE
+
+
+def _fragment_meta_preflight(
+        question: str, last_handoff: bool = False) -> Decision | None:
+    """Expose the deterministic never-retrieve fragment/meta floor."""
+    from .router import is_conversational_fragment, is_meta_help
+
+    if not (is_conversational_fragment(question) or is_meta_help(question)):
+        return None
+    message = META_FOLLOWUP_HANDOFF_MESSAGE if last_handoff else META_FOLLOWUP_MESSAGE
+    return Decision(
+        Outcome.ANSWER, message, question=question,
+        handoff=last_handoff, reason=DecisionReason.FRAGMENT_META,
+    )
+
+
+def _structured_rate_eligible(question: str) -> bool:
+    """Cede account, incident, and ambiguous-card turns to higher policy floors."""
+    return not (
+        _is_account_action(question)
+        or _ACTIVE_INCIDENT_FOR_RATE_RE.search(fold(question))
+        or is_ambiguous_card_maintenance(question)
+    )
+
+
+def _structured_rate_decision(question: str) -> Decision | None:
+    """Injectable pre-LLM seam for exact closed-catalog rate requests."""
+    if not _structured_rate_enabled():
+        return None
+    from .comparison import (CATALOG_DECLINE_REASONS, _source_bank_labels,
+                             parse_rate_intent_hybrid)
+
+    parsed = parse_rate_intent_hybrid(question)
+    if parsed.status == "not_rate":
+        return None
+    if parsed.status == "unsupported":
+        if parsed.reason not in CATALOG_DECLINE_REASONS:
+            return None
+        message = NO_EVIDENCE_MESSAGE
+        if parsed.reason == "unknown_bank":
+            labels = ", ".join(_source_bank_labels())
+            message = (
+                f"Nuk e njoh këtë bankë. Kam të dhëna për: {labels}. "
+                "Për cilën dëshironi të dini?"
+            )
+        return Decision(
+            Outcome.CLARIFY, message, question=question,
+            reason=(DecisionReason.CATALOG_UNKNOWN_BANK
+                    if parsed.reason == "unknown_bank"
+                    else DecisionReason.CATALOG_CONFLICTING_SLOTS),
+            rate_intent=parsed.intent,
+        )
+    return Decision(
+        None, question=question, reason=DecisionReason.CATALOG_EXACT_HIT,
+        rate_intent=parsed.intent,
+    )
+
 def decide(question: str, last_answer: str, history: list[dict[str, str]],
            last_outcome: Outcome | None = None, last_handoff: bool = False) -> Decision:
     """Route a caller turn before it can reach retrieval or the model."""
     gate = input_gate(question)
     if not gate.allowed:
-        return Decision(Outcome.UNSUPPORTED, UNSAFE_INPUT_MESSAGE)
+        return Decision(
+            Outcome.UNSUPPORTED, UNSAFE_INPUT_MESSAGE,
+            reason=DecisionReason.UNSAFE_INPUT,
+        )
 
     clean_question, pii_redacted = _redact_pii(question)
     # Step 2a: restore known ç/ë diacritics on lossily-typed tokens so the
@@ -495,25 +681,26 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
         # decision/session history; expose that redaction happened in telemetry.
         return Decision(
             Outcome.HANDOFF, SECURITY_HANDOFF_MESSAGE, handoff=True,
-            pii_redacted=True, reason="credential",
+            pii_redacted=True, reason=DecisionReason.CREDENTIAL_DISCLOSURE,
         )
     if pii_redacted:
         return Decision(
             Outcome.HANDOFF, PII_HANDOFF_MESSAGE, question=clean_question,
-            handoff=True, pii_redacted=True, reason="pii",
+            handoff=True, pii_redacted=True, reason=DecisionReason.PII_DETECTED,
         )
 
     if _is_repeat(clean_question):
         return Decision(
             Outcome.REPEAT, last_answer or REPEAT_MESSAGE,
-            handoff=last_handoff, reason="repeat",
+            handoff=last_handoff, reason=DecisionReason.REPEAT,
         )
 
     # ---- Legal-advice floor (deterministic, kept BEFORE the router) ----
     if _is_legal_advice_explicit(clean_question):
         return Decision(
             Outcome.UNSUPPORTED, LEGAL_ADVICE_MESSAGE,
-            question=clean_question, handoff=False, reason="legal_advice_explicit",
+            question=clean_question, handoff=False,
+            reason=DecisionReason.LEGAL_ADVICE_EXPLICIT,
         )
 
     # ---- Negation-statement floor (deterministic, BEFORE the router) ----
@@ -523,8 +710,24 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
         return Decision(
             Outcome.ANSWER, META_FOLLOWUP_MESSAGE,
             question=clean_question, handoff=last_handoff,
-            reason="negation_statement",
+            reason=DecisionReason.NEGATION_STATEMENT,
         )
+
+    # ---- Fragment/meta floor (deterministic, NEVER retrieves) ----
+    # [SUPERSEDED] This floor previously lived only inside router.classify_turn /
+    # analyze_turn, which made its pre-retrieval position implicit. The router
+    # checks remain for compatibility, but this exposed preflight is authoritative.
+    fragment_meta = _fragment_meta_preflight(clean_question, last_handoff)
+    if fragment_meta is not None:
+        return fragment_meta
+
+    # ---- Typed structured-rate seam (opt-in, BEFORE every LLM/vector call) ----
+    # Account actions, active incidents, and ambiguous-card turns explicitly
+    # cede to their existing higher-priority routing/backstop paths.
+    if _structured_rate_enabled() and _structured_rate_eligible(clean_question):
+        structured = _structured_rate_decision(clean_question)
+        if structured is not None:
+            return structured
 
     # ---- LLM turn-router (semantic intent, fused when ON) ----
     # Step 2b: when the router is enabled, ONE fused call returns the intent
@@ -566,12 +769,12 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     if _is_account_action(clean_question) and not _is_hypothetical_rights(clean_question):
         return Decision(
             Outcome.HANDOFF, ACCOUNT_HANDOFF_MESSAGE, handoff=True,
-            reason="account_action_backstop",
+            reason=DecisionReason.ACCOUNT_ACTION_BACKSTOP,
         )
 
     query_embedding = _encode_question(clean_question)
     incident_score = None
-    if not _is_informational_banking_query(clean_question):
+    if not _is_informational_banking_query(clean_question, last_outcome):
         # Deterministic backstop: the frozen incident classifier still runs on
         # non-informational turns so an LLM-missed incident escalates. Incident
         # vocabulary is routed through the classifier unchanged.
@@ -580,7 +783,7 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
         return Decision(
             Outcome.HANDOFF, SECURITY_HANDOFF_MESSAGE, handoff=True,
             query_embedding=query_embedding, handoff_score=incident_score,
-            reason="active_incident",
+            reason=DecisionReason.INCIDENT_BACKSTOP,
         )
     account_score = _account_action_score(query_embedding)
     # [SUPERSEDED] Ambiguous card-maintenance handled by the router label
@@ -591,4 +794,5 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     #                       handoff_score=account_score, reason="disambiguation")
     return Decision(None, question=clean_question, query_embedding=query_embedding,
                     handoff_score=account_score,
+                    reason=DecisionReason.DENSE_RETRIEVAL,
                     rewritten_query=fused_rewrite, legal_flags=fused_legal)

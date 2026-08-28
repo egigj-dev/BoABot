@@ -13,7 +13,7 @@ import pytest
 import core.answerability as answerability
 import core.api as api
 from core.answerability import ABSTAIN_MESSAGE, answerable, lexical_verdict
-from core.callcenter import Decision, Outcome
+from core.callcenter import Decision, DecisionReason, Outcome
 
 
 def _hit(text="Sa norma eshte 2.5% ne depozita 12 mujore.", article="", src="dense"):
@@ -172,6 +172,7 @@ def _run_generate_turn(monkeypatch, *, hits, answer_token=None):
     }))
     monkeypatch.setattr(api, "decide", lambda *a, **k: Decision(
         None, question="Sa është komisioni te BKT?", query_embedding=np.zeros(1),
+        reason=DecisionReason.DENSE_RETRIEVAL,
     ))
     monkeypatch.setattr(api, "needs_rewrite", lambda *a, **k: False)
     monkeypatch.setattr(
@@ -207,7 +208,7 @@ def test_generate_turn_abstains_when_evidence_lacks_value(monkeypatch) -> None:
     assert ABSTAIN_MESSAGE in token_text
     done = json.loads([e[6:] for e in events if '"type": "done"' in e][0])
     assert done["outcome"] == "unsupported"
-    assert done["reason"] == "abstain_price_without_value"
+    assert done["reason"] == DecisionReason.ANSWERABILITY_ABSTAIN.value
 
 
 def test_generate_turn_defers_to_generation_when_evidence_answers(monkeypatch) -> None:
@@ -219,4 +220,4 @@ def test_generate_turn_defers_to_generation_when_evidence_answers(monkeypatch) -
     assert downstream == ["stream_answer"]  # generation is reached
     done = json.loads([e[6:] for e in events if '"type": "done"' in e][0])
     assert done["outcome"] == "answer"
-    assert done.get("reason") is None
+    assert done["reason"] == DecisionReason.DENSE_ANSWER.value

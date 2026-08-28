@@ -111,6 +111,62 @@ def lexical_verdict(question: str, hits) -> tuple[bool, str]:
     return True, ""
 
 
+def _coerce_rate_intent(value):
+    from .comparison import RateIntent
+
+    if isinstance(value, RateIntent):
+        return value
+    if not isinstance(value, dict):
+        return None
+    try:
+        payload = dict(value)
+        payload["banks"] = tuple(payload.get("banks") or ())
+        return RateIntent(**payload)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def structured_verdict(intent, hits) -> tuple[str, str]:
+    """Validate a typed exact resolution without trusting its source tag alone."""
+    from .comparison import _row_slots, resolve_availability, resolve_rate_rows
+
+    typed_intent = _coerce_rate_intent(intent)
+    if typed_intent is None and hits:
+        typed_intent = _coerce_rate_intent(hits[0].get("rate_resolution"))
+    if typed_intent is None:
+        return "UNSUPPORTED", "structured_rate_untrusted_metadata"
+    if any(hit.get("retrieval_source") != "structured_rate" for hit in hits):
+        return "UNSUPPORTED", "structured_rate_mixed_evidence"
+
+    # Yes/no availability: the whole verdict is corpus membership, deterministic.
+    if typed_intent.availability:
+        offers = resolve_availability(typed_intent)
+        if not offers or not hits:
+            return "UNSUPPORTED", "structured_rate_missing_key"
+        if len(hits) != len(offers):
+            return "UNSUPPORTED", "structured_rate_incomplete_resolution"
+        for hit in hits:
+            if hit.get("rate_resolution") != typed_intent._asdict():
+                return "UNSUPPORTED", "structured_rate_untrusted_metadata"
+        return "SUPPORTED", "structured_rate_availability"
+
+    expected_rows = resolve_rate_rows(typed_intent)
+    if not expected_rows or not hits:
+        return "UNSUPPORTED", "structured_rate_missing_key"
+
+    expected = {str(row.get("_id")): _row_slots(row)._asdict() for row in expected_rows}
+    actual_ids = [str(hit.get("id") or "") for hit in hits]
+    if actual_ids != list(expected):
+        return "UNSUPPORTED", "structured_rate_incomplete_resolution"
+    resolution = typed_intent._asdict()
+    for hit in hits:
+        if hit.get("rate_resolution") != resolution:
+            return "UNSUPPORTED", "structured_rate_untrusted_metadata"
+        if hit.get("rate_row_slots") != expected[str(hit.get("id") or "")]:
+            return "UNSUPPORTED", "structured_rate_untrusted_metadata"
+    return "SUPPORTED", "structured_rate"
+
+
 def _evidence_text(hits) -> str:
     """Concatenate chunk texts (doc-labeled, truncated) for the verdict prompt."""
     parts: list[str] = []
@@ -166,7 +222,7 @@ def _answerability_verdict(question: str, hits):
     return None
 
 
-def _level(question: str, hits) -> tuple[str, str]:
+def _level(question: str, hits, rate_intent=None) -> tuple[str, str]:
     """Three-way classification of how completely the evidence answers.
 
     Returns (level, reason) where level is one of:
@@ -179,6 +235,9 @@ def _level(question: str, hits) -> tuple[str, str]:
     transport failure where judgement is inconclusive, never fabricates an
     answer.
     """
+    if rate_intent is not None or any(
+            hit.get("retrieval_source") == "structured_rate" for hit in hits):
+        return structured_verdict(rate_intent, hits)
     if not hits:
         return "UNSUPPORTED", "abstain_no_hits"
     answerable_, reason = lexical_verdict(question, hits)
@@ -192,22 +251,22 @@ def _level(question: str, hits) -> tuple[str, str]:
     return "SUPPORTED", ""
 
 
-def judge(question: str, hits) -> tuple[str, str]:
+def judge(question: str, hits, rate_intent=None) -> tuple[str, str]:
     """Step 6: three-way SUPPORTED / PARTIALLY_SUPPORTED / UNSUPPORTED gate.
 
     Returns (level, reason). Backward-compatible with the old binary contract:
     SUPPORTED and PARTIALLY_SUPPORTED both mean \"can generate\"; only
     UNSUPPORTED abstains.
     """
-    return _level(question, hits)
+    return _level(question, hits, rate_intent=rate_intent)
 
 
-def answerable(question: str, hits) -> tuple[bool, str]:
+def answerable(question: str, hits, rate_intent=None) -> tuple[bool, str]:
     """Return (can_generate, abstain_reason). Kept for backward compatibility.
 
     UNSUPPORTED abstains; SUPPORTED and PARTIALLY_SUPPORTED both allow
     generation (the caller may use the level to decide whether to lead with a
     hedge).
     """
-    level, reason = _level(question, hits)
+    level, reason = _level(question, hits, rate_intent=rate_intent)
     return (level != "UNSUPPORTED", reason)

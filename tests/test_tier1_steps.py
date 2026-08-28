@@ -103,7 +103,45 @@ def test_meta_followup_after_handoff_explains_but_does_not_handoff_again(monkeyp
     decision = decide("pse?", "", [], Outcome.HANDOFF, True)
     assert decision.outcome is Outcome.ANSWER
     assert decision.handoff is True  # explains prior handoff, does NOT re-escalate as new incident
-    assert decision.reason == "meta_followup"
+    assert decision.reason is callcenter.DecisionReason.FRAGMENT_META
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    ("per kartë debiti, per person fizik", "jo, karta është krediti"),
+)
+def test_clarify_domain_fragment_skips_incident_probe(monkeypatch, fragment) -> None:
+    monkeypatch.setattr(callcenter, "_analyze_turn", lambda *a, **k: None)
+    monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: "answer")
+    monkeypatch.setattr(callcenter, "_encode_question", lambda _t: np.zeros(1))
+    monkeypatch.setattr(
+        callcenter, "_probe_score",
+        lambda _e: pytest.fail("clarify reply without incident markers must skip probe"),
+    )
+    monkeypatch.setattr(callcenter, "_account_action_score", lambda _e: None)
+    decision = decide(fragment, "", [], Outcome.CLARIFY, False)
+    assert decision.outcome is None
+    assert not decision.handoff
+
+
+def test_domain_fragment_without_prior_clarify_keeps_incident_probe(monkeypatch) -> None:
+    monkeypatch.setattr(callcenter, "_analyze_turn", lambda *a, **k: None)
+    monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: "answer")
+    monkeypatch.setattr(callcenter, "_encode_question", lambda _t: np.zeros(1))
+    monkeypatch.setattr(callcenter, "_probe_score", lambda _e: callcenter._HANDOFF_THRESHOLD)
+    decision = decide("per kartë debiti, per person fizik", "", [])
+    assert decision.outcome is Outcome.HANDOFF
+    assert decision.reason is callcenter.DecisionReason.INCIDENT_BACKSTOP
+
+
+def test_incident_after_clarify_still_hands_off(monkeypatch) -> None:
+    monkeypatch.setattr(callcenter, "_analyze_turn", lambda *a, **k: None)
+    monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: "answer")
+    monkeypatch.setattr(callcenter, "_encode_question", lambda _t: np.zeros(1))
+    monkeypatch.setattr(callcenter, "_probe_score", lambda _e: callcenter._HANDOFF_THRESHOLD)
+    decision = decide("kam humbur kartën, çfarë të bëj?", "", [], Outcome.CLARIFY, False)
+    assert decision.outcome is Outcome.HANDOFF
+    assert decision.reason is callcenter.DecisionReason.INCIDENT_BACKSTOP
 
 
 # ---- Step 8: issuer attribution ---------------------------------------------
