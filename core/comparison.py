@@ -60,6 +60,16 @@ class StructuredIntentStatus(Enum):
     INSUFFICIENT_COMPARISON_DIMENSIONS = "insufficient_comparison_dimensions"
 
 
+class CoverageCertification(NamedTuple):
+    """Deterministic proof that a parsed intent covers the material query text."""
+
+    status: StructuredIntentStatus
+    consumed_phrases: tuple[str, ...] = ()
+    unresolved_qualifiers: tuple[str, ...] = ()
+    model_consumed_phrases: tuple[str, ...] = ()
+    model_unresolved_qualifiers: tuple[str, ...] = ()
+
+
 class RateIntent(NamedTuple):
     """Fully typed key used by both routing and exact row resolution."""
 
@@ -81,8 +91,9 @@ class RateParse(NamedTuple):
     intent: RateIntent | None
     reason: Literal[
         "unknown_bank", "missing_product", "conflicting_slots",
-        "missing_key", "",
+        "missing_key", "unrepresented_semantics", "",
     ]
+    coverage: CoverageCertification | None = None
 
 
 class RowSlots(NamedTuple):
@@ -97,15 +108,22 @@ class RowSlots(NamedTuple):
 # Bounded Albanian vocabularies: these are catalog slots, not semantic prompts.
 PRODUCT_TERMS = {
     "consumer_credit_unsecured": (
-        ("kredi", "kredia", "kredise"),
+        ("kredi", "kredia", "kredie", "kredise", "kredive"),
         ("konsumator", "konsumatore", "konsumtare", "pasiguruar"),
     ),
     "consumer_credit_mortgage": (
-        ("kredi",), ("konsumator", "konsumatore"), ("hipotek",),
+        ("kredi", "kredia", "kredie", "kredise", "kredive"),
+        ("konsumator", "konsumatore"), ("hipotek", "hipoteke", "hipotekes"),
     ),
-    "housing_credit": (("kredi",), ("shtepi", "prona", "hipotekare")),
-    "deposit": (("depozit", "depozita", "depozitave"),),
-    "debit_card": (("kart", "karte", "karta", "kartes"), ("debit", "debiti")),
+    "housing_credit": (
+        ("kredi", "kredia", "kredie", "kredise", "kredive"),
+        ("shtepi", "prona", "hipotekare"),
+    ),
+    "deposit": (("depozit", "depozite", "depozita", "depozites", "depozitave"),),
+    "debit_card": (
+        ("kart", "karte", "karta", "kartes"),
+        ("debit", "debiti", "debitit"),
+    ),
     "credit_card": (("kart", "karte", "karta", "kartes"), ("kredit", "krediti")),
 }
 METRIC_TERMS = {
@@ -113,7 +131,11 @@ METRIC_TERMS = {
         "interes", "interesi", "interesit", "norme", "norma", "normat",
         "nei", "nominale",
     ),
-    "fee": ("tarif", "tarifa", "tarifat", "komision", "komisione", "kosto"),
+    "fee": (
+        "tarif", "tarifa", "tarifat", "tarifes",
+        "komision", "komisioni", "komisionit", "komisione", "komisionet",
+        "kosto", "kostos",
+    ),
     "penalty": ("penalitet", "penalizues", "vonuar"),
 }
 FEE_EVENT_TERMS = {
@@ -161,7 +183,7 @@ _FAMILY_OF: dict[Product, str] = {
     "credit_card": "card",
 }
 _BARE_FAMILY_TERMS: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("kredi", "kredia", "kredise", "kredit"), "credit"),
+    (("kredi", "kredia", "kredie", "kredise", "kredive", "kredit"), "credit"),
     (("kart", "karte", "karta", "kartes"), "card"),
     (("depozit", "depozita", "depozitave"), "deposit"),
     (("shtepi", "prona", "hipotek"), "housing_credit"),
@@ -173,6 +195,29 @@ _UNKNOWN_BANK_STOP = frozenset({
     "te", "gjitha", "nga", "ne", "per", "dhe", "e", "shqiperi",
     "shqipari", "me", "nje",
 })
+_CERTIFIABLE_BANK_ALIASES = {
+    "aib": "Banka Amerikane e Investimeve Shqiperi",
+    "bpi": "Banka e Parë e Investimeve Albania",
+}
+
+# Closed, precision-oriented forms used only for semantic certification. The
+# recall matcher above intentionally remains permissive (`term\w*`), but a
+# token is certifiably consumed only by an exact known form or phrase here.
+_CERTIFIABLE_OFFER_FORMS = (
+    "ofroj", "ofron", "ofrojne", "ofronte", "ofruan", "jep", "japin",
+)
+_CERTIFIABLE_COMPARISON_FORMS = (
+    "krahaso", "krahasim", "krahasimi", "me e ulet", "me te ulet", "me lire",
+)
+_CERTIFIABLE_RESIDUE = _QUERY_STOPWORDS | frozenset({
+    "bankat", "bankes", "banken", "cfar", "cfare", "cilen", "cilin", "cili",
+    "dua", "di", "do", "jane", "jo", "ju", "lutem", "ma", "mund", "nje",
+    "nga", "nese", "prej", "qe", "rreth", "se", "trego", "tregoni", "thjesht", "tyre",
+})
+_COVERAGE_TOKEN_RE = re.compile(r"[^\W_]+|%", re.UNICODE)
+_CERTIFIABLE_TERM_RE = re.compile(
+    r"(?:\b(?:afat|maturitet)\s+)?\b(\d+)\s+(?:muaj|muajsh|muajve)\b"
+)
 
 
 def _has_term(text: str, term: str) -> bool:
@@ -320,6 +365,127 @@ def _bank_scope(folded_question: str) -> tuple[
     if named:
         return "named", named, ""
     return "all", _source_bank_labels(), ""
+
+
+def _deduplicated(items: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(item for item in items if item))
+
+
+def _model_audit_values(raw: dict | None, key: str) -> tuple[str, ...]:
+    if not isinstance(raw, dict):
+        return ()
+    values = raw.get(key)
+    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+        return ()
+    return _deduplicated(tuple(item.strip() for item in values))
+
+
+def _slot_certifiable_phrases(intent: RateIntent) -> tuple[str, ...]:
+    phrases: list[str] = []
+    if intent.product is not None:
+        for group in PRODUCT_TERMS[intent.product]:
+            phrases.extend(group)
+    elif intent.family:
+        for terms, family in _BARE_FAMILY_TERMS:
+            if family == intent.family:
+                phrases.extend(terms)
+        for product in PRODUCT_FAMILY.get(intent.family, ()):
+            for group in PRODUCT_TERMS[product]:
+                phrases.extend(group)
+
+    if intent.metric is not None:
+        phrases.extend(METRIC_TERMS[intent.metric])
+    if intent.fee_event is not None:
+        phrases.extend(FEE_EVENT_TERMS.get(intent.fee_event, ()))
+    if intent.value_type is not None:
+        phrases.extend(VALUE_TYPE_TERMS.get(intent.value_type, ()))
+    if intent.amount_band == "minimum":
+        phrases.extend(("shume minimale", "shumen minimale", "shuma minimale"))
+    elif intent.amount_band == "maximum":
+        phrases.extend(("shume maksimale", "shumen maksimale", "shuma maksimale"))
+    return _deduplicated(tuple(phrases))
+
+
+def certify_semantic_coverage(
+        question: str, intent: RateIntent, *, model_report: dict | None = None,
+        ) -> CoverageCertification:
+    """Certify material query semantics with exact, closed-form consumption.
+
+    MATCHED remains recall-oriented and may come from `_has_term(term\\w*)`.
+    CERTIFIABLY_CONSUMED requires exact known forms and phrases. Model-reported
+    coverage is advisory. Deterministic certification controls whether the
+    structured seam may assert an answer.
+    """
+    folded_question = fold(question)
+    tokens = tuple(_COVERAGE_TOKEN_RE.finditer(folded_question))
+    consumed_indexes: set[int] = set()
+    consumed_phrases: list[str] = []
+
+    def consume_span(start: int, end: int, phrase: str) -> None:
+        matched = False
+        for index, token in enumerate(tokens):
+            if token.start() >= start and token.end() <= end:
+                consumed_indexes.add(index)
+                matched = True
+        if matched:
+            consumed_phrases.append(phrase)
+
+    def consume_exact(phrases) -> None:
+        for phrase in phrases:
+            folded_phrase = fold(str(phrase)).strip()
+            if not folded_phrase:
+                continue
+            pattern = re.compile(rf"(?<!\w){re.escape(folded_phrase)}(?!\w)")
+            for match in pattern.finditer(folded_question):
+                consume_span(match.start(), match.end(), match.group(0))
+
+    consume_exact(_slot_certifiable_phrases(intent))
+    consume_exact(_CERTIFIABLE_OFFER_FORMS)
+    consume_exact(_CERTIFIABLE_COMPARISON_FORMS)
+    consume_exact(ALL_BANK_TERMS)
+
+    _named, bank_spans = _named_banks(folded_question)
+    for start, end in bank_spans:
+        consume_span(start, end, folded_question[start:end])
+
+    for alias, bank in _CERTIFIABLE_BANK_ALIASES.items():
+        if bank in intent.banks:
+            consume_exact((alias,))
+
+    if intent.term_months is not None:
+        for match in _CERTIFIABLE_TERM_RE.finditer(folded_question):
+            if int(match.group(1)) == intent.term_months:
+                consume_span(match.start(), match.end(), match.group(0))
+
+    unresolved = _deduplicated(tuple(
+        token.group(0) for index, token in enumerate(tokens)
+        if index not in consumed_indexes
+        and token.group(0) not in _CERTIFIABLE_RESIDUE
+    ))
+    status = (
+        StructuredIntentStatus.UNREPRESENTED_SEMANTICS if unresolved
+        else StructuredIntentStatus.FULL_STRUCTURED_INTENT
+    )
+    return CoverageCertification(
+        status=status,
+        consumed_phrases=_deduplicated(consumed_phrases),
+        unresolved_qualifiers=unresolved,
+        model_consumed_phrases=_model_audit_values(model_report, "consumed_phrases"),
+        model_unresolved_qualifiers=_model_audit_values(
+            model_report, "unresolved_qualifiers",
+        ),
+    )
+
+
+def _certified_rate_parse(
+        question: str, intent: RateIntent, *, model_report: dict | None = None,
+        ) -> RateParse:
+    coverage = certify_semantic_coverage(question, intent, model_report=model_report)
+    if coverage.status is StructuredIntentStatus.UNREPRESENTED_SEMANTICS:
+        return RateParse(
+            "unsupported", intent, "unrepresented_semantics", coverage,
+        )
+    return RateParse("resolved", intent, "", coverage)
 
 
 def _row_slots(row: dict) -> RowSlots:
@@ -520,6 +686,9 @@ Përdor vetëm këto vlera të mbyllura:
 - decline_reason: {declines} ose null
 - term_months: numër i plotë ose null; availability dhe has_price_qualifier:
   vetëm true ose false.
+- consumed_phrases dhe unresolved_qualifiers mund të shtohen si lista me fraza; janë
+  vetëm auditim ndihmës. Certifikimi determinist vendos nëse mbulimi është i
+  plotë.
 
 Rregulla semantike:
 1. Një emër banke jashtë listës NUK nënkupton të gjitha bankat: vendos
@@ -689,7 +858,7 @@ def parse_rate_intent(question: str) -> RateParse:
             amount_band=None, breadth="product_metric", family=family,
             availability=True,
         )
-        return RateParse("resolved", intent, "")
+        return _certified_rate_parse(question, intent)
 
     # ---- Value/comparison ask ----
     rate_like = bool(metric_matches) or (
@@ -715,7 +884,7 @@ def parse_rate_intent(question: str) -> RateParse:
         )
         if not resolve_rate_rows(intent):
             return RateParse("unsupported", intent, "missing_key")
-        return RateParse("resolved", intent, "")
+        return _certified_rate_parse(question, intent)
     # Metric-only comparison ("krahaso ... per komisione"): no product slot.
     if is_comparison and not product_matches and metric_matches:
         if len(metric_matches) != 1:
@@ -727,7 +896,7 @@ def parse_rate_intent(question: str) -> RateParse:
         )
         if not resolve_rate_rows(intent):
             return RateParse("unsupported", intent, "missing_key")
-        return RateParse("resolved", intent, "")
+        return _certified_rate_parse(question, intent)
     if not product_matches:
         return RateParse("unsupported", None, "missing_product")
     if len(product_matches) != 1:
@@ -769,7 +938,7 @@ def parse_rate_intent(question: str) -> RateParse:
     )
     if not resolve_rate_rows(intent):
         return RateParse("unsupported", intent, "missing_key")
-    return RateParse("resolved", intent, "")
+    return _certified_rate_parse(question, intent)
 
 
 def parse_rate_intent_hybrid(question: str) -> RateParse:
@@ -791,7 +960,7 @@ def parse_rate_intent_hybrid(question: str) -> RateParse:
         return lexical
     intent, decline = _validate_extracted(raw, question)
     if intent is not None:
-        return RateParse("resolved", intent, "")
+        return _certified_rate_parse(question, intent, model_report=raw)
     if decline == "not_rate":
         return RateParse("not_rate", None, "")
     if decline not in _EXTRACT_DECLINES:
