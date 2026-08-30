@@ -100,6 +100,26 @@ def test_superlative_loan_ask_clarifies_for_dimensions() -> None:
     assert "term_months" in parsed.coverage.unresolved_qualifiers
 
 
+def test_hybrid_does_not_let_extractor_override_clarify(monkeypatch) -> None:
+    # With the LLM extractor enabled (keys present), a poisoned extractor that
+    # would return a conflicting intent must NOT override the deterministic
+    # comparison-dimensions CLARIFY for the superlative loan ask.
+    from core import comparison
+    monkeypatch.setattr(comparison, "_extract_rate_slots", lambda _q: {
+        "is_rate_ask": True, "kind": "value_comparison", "bank_scope": "all",
+        "banks": [], "product": "consumer_credit_unsecured", "metric": "interest_rate",
+        "family": "consumer_credit", "availability": False,
+        "has_price_qualifier": False, "decline_reason": None,
+    })
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
+    parsed = comparison.parse_rate_intent_hybrid(
+        "dua te marr nje kredi. cila banke ofron interesin me te mire?")
+    assert parsed.reason == "comparison_dimensions_missing"
+    assert parsed.intent is not None
+    assert parsed.intent.family == "credit"
+
+
 def test_superlative_loan_ask_clarify_message_lists_dimensions(monkeypatch) -> None:
     # Full seam: the CLARIFY message must name the missing dimensions.
     from core import callcenter

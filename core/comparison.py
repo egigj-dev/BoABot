@@ -1490,9 +1490,12 @@ def parse_rate_intent_hybrid(question: str) -> RateParse:
     lexical = parse_rate_intent(question)
     if lexical.status in ("resolved", "not_rate"):
         return lexical
-    if lexical.reason == "maturity_band_required":
-        # Business-rate CLARIFY is terminal: the extractor's closed universe
-        # has no business-rate family and would misread it as missing_product.
+    if lexical.reason in ("maturity_band_required", "comparison_dimensions_missing"):
+        # Certified CLARIFY declines are terminal: the LLM extractor's closed
+        # universe has no business-rate family (band) and no missing-dimension
+        # semantics (comparison dims), so it could override a correct CLARIFY
+        # with an under-specified intent (observed live: 'interesin me te mire'
+        # -> extractor intent -> unrepresented -> dense abstain).
         return lexical
 
     # Import the serving gate lazily so this module remains independently
