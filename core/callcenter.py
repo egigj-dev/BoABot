@@ -535,7 +535,7 @@ def _is_personal_record_request(text: str) -> bool:
 # answer path, but exempted (carved out) for this hypothetical/rights framing so
 # genuine "close my account" requests still escalate and rights questions do not.
 _HYPOTHETICAL_RIGHTS_RE = re.compile(
-    r"\b(?:a\s+garanton|a\s+lejohet|a\s+ndalohet|a\s+ka\s+te\s+drejte|"
+    r"\b(?:a\s+garanton|a\s+lejohet|a\s+ndalohet|a\s+(?:ka|kam|keni)\s+te\s+drejte|"
     r"a\s+mundet\s+banka|a\s+mund\s+banka|eshte\s+e\s+lejuar|"
     r"eshte\s+e\s+ndaluar|nuk\s+mund\s+te\s+me\b)\b",
     re.I,
