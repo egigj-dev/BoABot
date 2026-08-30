@@ -188,3 +188,50 @@ def test_wrong_band_value_still_dropped() -> None:
     sentence = BAND_SENTENCE.replace("8.00", "7.50")
     verdict = GUARD.verify_sources(sentence, evidence([BIZNES_TABLE]))
     assert not verdict.approved
+
+
+# ---- c23: source-aligned terminology, NOT semantic aliasing (2026-08-30) ----
+# Product words (kredi/kredite) must NEVER be approved against terse business-
+# rate tables whose evidence establishes no product; the acronym "NEI" must not
+# be folded to "interesit" (acronym expansion is semantic aliasing -> the fold
+# does NOT exist, and a sentence using "interesi" against NEI-only evidence
+# must fail). The generator instead reuses the table's own labels (rag.py
+# SYSTEM clause), so the source-terminology sentences below are the ones that
+# must approve.
+NEI_TABLE = (
+    "Normat nominale dhe NEI për bizneset\n"
+    "Biznes i vogel — maturitet 25-36 muaj\n"
+    "Biznes i vogel: 8.60\n"
+)
+
+
+def test_kredi_product_word_injection_is_dropped() -> None:
+    # The 8.00 value binds to evidence, but "kredi"/"ofrojne" are product and
+    # availability words absent from the terse table vocabulary -> fail-closed.
+    sentence = "Të gjitha bankat ofrojnë kredi me 8.00 përqind."
+    verdict = GUARD.verify_sources(sentence, evidence([BIZNES_TABLE]))
+    assert not verdict.approved
+    assert "mismatch" in verdict.reason
+
+
+def test_business_rate_source_terminology_approves() -> None:
+    # Generator reusing the table's own labels passes deterministically.
+    sentence = "Për 'Biznes i vogël', norma nominale është 8.00 përqind."
+    verdict = GUARD.verify_sources(sentence, evidence([BIZNES_TABLE]))
+    assert verdict.approved, verdict.reason
+
+
+def test_nei_source_terminology_approves() -> None:
+    sentence = "NEI është 8.60 përqind."
+    verdict = GUARD.verify_sources(sentence, evidence([NEI_TABLE]))
+    assert verdict.approved, verdict.reason
+
+
+def test_interesit_does_not_alias_nei_acronym() -> None:
+    # No NEI -> interesit fold exists BY DESIGN: acronym expansion is semantic
+    # aliasing, and "interesit" alone does not mean NEI. Pins the no-fold
+    # decision as a regression test.
+    sentence = "Interesi është 8.60 përqind."
+    verdict = GUARD.verify_sources(sentence, evidence([NEI_TABLE]))
+    assert not verdict.approved
+    assert "mismatch" in verdict.reason
