@@ -18,7 +18,8 @@ import numpy as np
 
 from .retrieve import EMBEDDING_MODEL_NAME, model
 from .text_norm import fold, restore_diacritics
-from .trust import NO_EVIDENCE_MESSAGE, UNSAFE_INPUT_MESSAGE, bank_names, input_gate
+from .trust import (INSTITUTION_REGISTER_SOURCE, NO_EVIDENCE_MESSAGE,
+                    UNSAFE_INPUT_MESSAGE, bank_names, input_gate)
 
 if TYPE_CHECKING:
     from .comparison import RateIntent
@@ -566,7 +567,8 @@ def _catalog_message() -> str | None:
     if not names:
         return None
     readable = [name.upper() if len(name) <= 3 else name.title() for name in names]
-    return "Bankat tregtare në Shqipëri janë: " + ", ".join(readable) + "."
+    return ("Bankat tregtare në Shqipëri janë: " + ", ".join(readable)
+            + ". Burimi: " + str(INSTITUTION_REGISTER_SOURCE["title"]) + ".")
 
 
 def _fallback_label(question: str) -> str:

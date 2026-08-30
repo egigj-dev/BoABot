@@ -72,6 +72,18 @@ def bank_names() -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
+# Provenance for zero-retrieval institution facts (e.g. the bank-catalog list
+# answer "Cilat jane bankat ne shqiperi?"). Identity-only: the register declares
+# WHICH institutions are licensed; it is never product-availability evidence.
+INSTITUTION_REGISTER_SOURCE: dict[str, object] = {
+    "id": "boa-licensed-institutions",
+    "doc": "Banka e Shqipërisë — Subjektet e licencuara",
+    "title": "Regjistri i subjekteve të licencuara — Banka e Shqipërisë",
+    "url": "https://www.bankofalbania.org/Mbikeqyrja/Subjekte_te_licencuara/",
+    "as_of": None,  # no fabricated date; BoA updates the register continuously
+}
+
+
 @lru_cache(maxsize=1)
 def _bank_name_re() -> re.Pattern[str]:
     alternatives = "|".join(re.escape(name) for name in bank_names())

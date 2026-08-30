@@ -130,7 +130,10 @@ def test_router_off_catalog_uses_lexical_fallback(monkeypatch) -> None:
     decision = decide("cilat banka operojne ne shqiperi?", "", [])
     assert decision.outcome is Outcome.ANSWER
     assert decision.reason is DecisionReason.BANK_CATALOG_LIST
-    assert decision.message.endswith("Credins, OTP.")
+    assert decision.message.startswith("Bankat tregtare në Shqipëri janë: ")
+    assert "Credins, OTP." in decision.message
+    assert decision.message.endswith(
+        "Burimi: Regjistri i subjekteve të licencuara — Banka e Shqipërisë.")
 
 
 def test_router_catalog_label_on_fee_question_falls_through_to_retrieval(monkeypatch) -> None:

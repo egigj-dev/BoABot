@@ -28,7 +28,7 @@ from .retrieve import embedding_stats
 from .retrieve import open_pool as open_retrieval_pool
 from .retrieve import shutdown as shutdown_retrieval
 from .retrieve import warmup as warmup_retrieval
-from .trust import NO_EVIDENCE_MESSAGE
+from .trust import INSTITUTION_REGISTER_SOURCE, NO_EVIDENCE_MESSAGE
 from .text_norm import fold as _fold_text
 from .answerability import ABSTAIN_MESSAGE, judge
 from voice.shared.fidelity_guard import FidelityGuard
@@ -547,9 +547,16 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             handoff = decision.handoff
             handoff_reason = decision.reason.value
             yield from emit_policy_message(decision.message)
+            outcome_sources: list[dict[str, object]] = []
+            if decision.reason == DecisionReason.BANK_CATALOG_LIST:
+                # Catalog lists carry the BoA licensed-institutions register as
+                # provenance (zero-retrieval deterministic answer; the source is
+                # a stable reference, not a retrieved chunk).
+                outcome_sources.append(dict(INSTITUTION_REGISTER_SOURCE))
             yield done_event(outcome, handoff=handoff,
                              pii_redacted=decision.pii_redacted,
-                             reason=decision.reason.value)
+                             reason=decision.reason.value,
+                             sources=outcome_sources)
             return
 
         rate_intent = getattr(decision, "rate_intent", None)
