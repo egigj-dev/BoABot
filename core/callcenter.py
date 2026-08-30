@@ -112,6 +112,7 @@ class DecisionReason(str, Enum):
     CATALOG_EXACT_HIT = "catalog_exact_hit"
     CATALOG_UNKNOWN_BANK = "catalog_unknown_bank"
     CATALOG_CONFLICTING_SLOTS = "catalog_conflicting_slots"
+    COMPARISON_DIMENSIONS_MISSING = "comparison_dimensions_missing"
     CATALOG_MISSING_KEY = "catalog_missing_key"
     SEMANTIC_INCIDENT = "semantic_incident"
     SEMANTIC_ACCOUNT_ACTION = "semantic_account_action"
@@ -686,17 +687,37 @@ def _structured_rate_decision(question: str) -> Decision | None:
         if parsed.reason not in CATALOG_DECLINE_REASONS:
             return None
         message = NO_EVIDENCE_MESSAGE
+        reason = DecisionReason.CATALOG_CONFLICTING_SLOTS
         if parsed.reason == "unknown_bank":
             labels = ", ".join(_source_bank_labels())
             message = (
                 f"Nuk e njoh këtë bankë. Kam të dhëna për: {labels}. "
                 "Për cilën dëshironi të dini?"
             )
+            reason = DecisionReason.CATALOG_UNKNOWN_BANK
+        elif parsed.reason == "comparison_dimensions_missing":
+            labels = {
+                "currency": "monedha",
+                "term_months": "afati",
+                "amount_band": "shuma",
+                "customer_segment": "segmenti (individë apo biznese)",
+                "fee_event": "lloji i komisionit",
+            }
+            dimensions = [
+                labels[item] for item in (
+                    parsed.coverage.unresolved_qualifiers
+                    if parsed.coverage is not None else ()
+                ) if item in labels
+            ]
+            if len(dimensions) > 1:
+                requested = ", ".join(dimensions[:-1]) + f" dhe {dimensions[-1]}"
+            else:
+                requested = dimensions[0] if dimensions else "dimensionet e krahasimit"
+            message = f"Për ta krahasuar saktë, më duhet {requested}."
+            reason = DecisionReason.COMPARISON_DIMENSIONS_MISSING
         return Decision(
             Outcome.CLARIFY, message, question=question,
-            reason=(DecisionReason.CATALOG_UNKNOWN_BANK
-                    if parsed.reason == "unknown_bank"
-                    else DecisionReason.CATALOG_CONFLICTING_SLOTS),
+            reason=reason,
             rate_intent=parsed.intent,
         )
     return Decision(

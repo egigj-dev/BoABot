@@ -19,7 +19,14 @@ _PRICE_TERMS = (
     *PRICE_INTENT,
     "tarif", "komision", "interes", "penalitet", "norme", "norma", "kosto",
 )
-_COMPARISON_TERMS = ("krahas", "me e ulet", "me te ulet", "me lire")
+_COMPARISON_TERMS = (
+    "krahas", "me e mire", "me te mire", "me e ulet", "me te ulet",
+    "me lire", "me e lire",
+)
+_SUPERLATIVE_TERMS = (
+    "me te mire", "me e mire", "me te ulet", "me e ulet", "me lire",
+    "me e lire",
+)
 _QUERY_STOPWORDS = frozenset({
     "a", "bank", "banka", "banke", "bankat", "cila", "cilat", "dhe", "e",
     "eshte", "i", "ka", "krahaso", "me", "meje", "ne", "per", "sa", "te",
@@ -84,6 +91,23 @@ class RateIntent(NamedTuple):
     breadth: Literal["leaf", "product_metric"]
     family: str | None = None
     availability: bool = False
+    currency: Literal["ALL", "EUR", "USD"] | None = None
+    customer_segment: Literal["individual", "business"] | None = None
+    wildcard_slots: frozenset[str] = frozenset()
+
+
+def _rate_intent_asdict(intent: RateIntent) -> dict:
+    """Keep legacy serialized intents stable while exposing populated new slots."""
+    values = dict(zip(intent._fields, intent))
+    for key in ("currency", "customer_segment"):
+        if values[key] is None:
+            values.pop(key)
+    if not values["wildcard_slots"]:
+        values.pop("wildcard_slots")
+    return values
+
+
+RateIntent._asdict = _rate_intent_asdict  # type: ignore[method-assign]
 
 
 class RateParse(NamedTuple):
@@ -91,7 +115,8 @@ class RateParse(NamedTuple):
     intent: RateIntent | None
     reason: Literal[
         "unknown_bank", "missing_product", "conflicting_slots",
-        "missing_key", "unrepresented_semantics", "",
+        "missing_key", "unrepresented_semantics",
+        "comparison_dimensions_missing", "",
     ]
     coverage: CoverageCertification | None = None
 
@@ -142,6 +167,15 @@ METRIC_TERMS = {
         "kosto", "kostos",
     ),
     "penalty": ("penalitet", "penalizues", "vonuar"),
+}
+CURRENCY_TERMS = {
+    "ALL": ("lek", "leke"),
+    "EUR": ("euro", "eur"),
+    "USD": ("dollar", "dollare", "usd"),
+}
+CUSTOMER_SEGMENT_TERMS = {
+    "individual": ("individ", "individe", "personal", "person fizik"),
+    "business": ("biznes", "biznese", "kompani", "shoqeri", "person juridik"),
 }
 FEE_EVENT_TERMS = {
     "administration": ("administrim", "administrimi", "administrimit"),
@@ -215,8 +249,10 @@ _CERTIFIABLE_OFFER_FORMS = (
     "ofroj", "ofron", "ofrojne", "ofronte", "ofruan", "jep", "japin",
 )
 _CERTIFIABLE_COMPARISON_FORMS = (
-    "krahaso", "krahasim", "krahasimi", "me e ulet", "me te ulet", "me lire",
+    "krahaso", "krahasim", "krahasimi", "me e mire", "me te mire",
+    "me e ulet", "me te ulet", "me lire", "me e lire",
 )
+_CERTIFIABLE_BREADTH_FORMS = ("te gjitha",)
 _CERTIFIABLE_RESIDUE = _QUERY_STOPWORDS | frozenset({
     "bankat", "bankes", "banken", "cfar", "cfare", "cilen", "cilin", "cili",
     "dua", "di", "do", "jane", "jo", "ju", "lutem", "ma", "mund", "nje",
@@ -239,6 +275,18 @@ def _has_term(text: str, term: str) -> bool:
 def _matching_slots(text: str, vocabulary: dict) -> list[str]:
     return [name for name, terms in vocabulary.items()
             if any(_has_term(text, term) for term in terms)]
+
+
+def _matching_exact_slots(text: str, vocabulary: dict) -> list[str]:
+    return [
+        name for name, terms in vocabulary.items()
+        if any(re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text) for term in terms)
+    ]
+
+
+def _conservative_value(text: str, vocabulary: dict) -> str | None:
+    matches = _matching_exact_slots(text, vocabulary)
+    return matches[0] if len(matches) == 1 else None
 
 
 def _matching_products(text: str) -> list[Product]:
@@ -405,6 +453,10 @@ def _slot_certifiable_phrases(intent: RateIntent) -> tuple[str, ...]:
 
     if intent.metric is not None:
         phrases.extend(METRIC_TERMS[intent.metric])
+    if intent.currency is not None:
+        phrases.extend(CURRENCY_TERMS[intent.currency])
+    if intent.customer_segment is not None:
+        phrases.extend(CUSTOMER_SEGMENT_TERMS[intent.customer_segment])
     if intent.fee_event is not None:
         phrases.extend(FEE_EVENT_TERMS.get(intent.fee_event, ()))
     if intent.value_type is not None:
@@ -452,6 +504,7 @@ def certify_semantic_coverage(
     consume_exact(_slot_certifiable_phrases(intent))
     consume_exact(_CERTIFIABLE_OFFER_FORMS)
     consume_exact(_CERTIFIABLE_COMPARISON_FORMS)
+    consume_exact(_CERTIFIABLE_BREADTH_FORMS)
     consume_exact(ALL_BANK_TERMS)
 
     _named, bank_spans = _named_banks(folded_question)
@@ -487,14 +540,76 @@ def certify_semantic_coverage(
     )
 
 
+_REQUIRED_COMPARISON_DIMENSIONS = {
+    "interest_rate": ("currency", "term_months", "amount_band", "customer_segment"),
+    "fee": ("fee_event", "customer_segment", "currency"),
+    "penalty": ("fee_event", "customer_segment"),
+}
+
+
+def _superlative_ask(question: str) -> bool:
+    folded_question = fold(question)
+    return any(term in folded_question for term in _SUPERLATIVE_TERMS)
+
+
+def _missing_comparison_dimensions(
+        intent: RateIntent, rows: list[dict]) -> tuple[str, ...] | None:
+    metrics = {row["_row_slots"].metric for row in rows}
+    metric = intent.metric
+    if metric is None:
+        concrete_metrics = {item for item in metrics if item is not None}
+        if len(concrete_metrics) != 1:
+            return None
+        metric = next(iter(concrete_metrics))
+    required = _REQUIRED_COMPARISON_DIMENSIONS.get(metric)
+    if required is None:
+        return None
+
+    missing: list[str] = []
+    for dimension in required:
+        if dimension == "amount_band":
+            bands = {row["_row_slots"].amount_band for row in rows}
+            if intent.amount_band is None and len(bands) > 1:
+                missing.append(dimension)
+        elif getattr(intent, dimension) is None:
+            missing.append(dimension)
+    return tuple(missing)
+
+
 def _certified_rate_parse(
         question: str, intent: RateIntent, *, model_report: dict | None = None,
+        require_resolution: bool = True,
         ) -> RateParse:
     coverage = certify_semantic_coverage(question, intent, model_report=model_report)
     if coverage.status is StructuredIntentStatus.UNREPRESENTED_SEMANTICS:
         return RateParse(
             "unsupported", intent, "unrepresented_semantics", coverage,
         )
+    if intent.availability:
+        return RateParse("resolved", intent, "", coverage)
+
+    rows = resolve_rate_rows(intent)
+    if not rows and (require_resolution or _superlative_ask(question)):
+        return RateParse("unsupported", intent, "missing_key", coverage)
+    if not rows:
+        return RateParse("resolved", intent, "", coverage)
+    if _superlative_ask(question):
+        # Product-labeled NEI/credit rows are listable but cannot establish a
+        # bank ranking. Keep them on the honest dense fall-through path.
+        if not intent.banks or not all(row["_bank_lines"] for row in rows):
+            return RateParse("unsupported", intent, "missing_key", coverage)
+        missing = _missing_comparison_dimensions(intent, rows)
+        if missing is None:
+            return RateParse("unsupported", intent, "missing_key", coverage)
+        if missing:
+            comparison_coverage = coverage._replace(
+                status=StructuredIntentStatus.INSUFFICIENT_COMPARISON_DIMENSIONS,
+                unresolved_qualifiers=missing,
+            )
+            return RateParse(
+                "unsupported", intent, "comparison_dimensions_missing",
+                comparison_coverage,
+            )
     return RateParse("resolved", intent, "", coverage)
 
 
@@ -572,12 +687,20 @@ def _selected_bank_lines(row: dict, banks: tuple[str, ...]) -> list[str]:
 
 def resolve_rate_rows(intent: RateIntent) -> list[dict]:
     """Resolve a typed key by slot equality and preserve stable corpus order."""
+    product_wildcard = "product" in intent.wildcard_slots
+    metric_wildcard = "metric" in intent.wildcard_slots
+    family_products = PRODUCT_FAMILY.get(intent.family or "")
+    if intent.product is None and not product_wildcard and not family_products:
+        return []
+    if intent.metric is None and not metric_wildcard:
+        return []
+
     resolved: list[dict] = []
     for row in _rate_rows():
         slots = _row_slots(row)
-        # product=None (metric-only comparison) and metric=None (product-only
-        # comparison or availability) act as wildcards.
         if intent.product is not None and slots.product != intent.product:
+            continue
+        if intent.product is None and family_products and slots.product not in family_products:
             continue
         if intent.metric is not None and slots.metric != intent.metric:
             continue
@@ -589,8 +712,17 @@ def resolve_rate_rows(intent: RateIntent) -> list[dict]:
             continue
         if intent.amount_band is not None and slots.amount_band != intent.amount_band:
             continue
+        if intent.currency is not None and row.get("currency") != intent.currency:
+            continue
+        if (intent.customer_segment is not None
+                and row.get("customer_segment") != intent.customer_segment):
+            continue
         bank_lines = _selected_bank_lines(row, intent.banks)
-        if not bank_lines:
+        family_listing = (
+            intent.product is None and family_products is not None
+            and intent.bank_scope == "all"
+        )
+        if not bank_lines and not family_listing:
             continue
         copy = dict(row)
         copy["_bank_lines"] = tuple(bank_lines)
@@ -647,7 +779,9 @@ def _resolve_family(product_matches: list[Product], folded_question: str) -> str
 
 # Catalog declines only when answering would require guessing which bank or
 # slot the caller meant. Any other miss is coverage, not ambiguity.
-CATALOG_DECLINE_REASONS = frozenset({"unknown_bank", "conflicting_slots"})
+CATALOG_DECLINE_REASONS = frozenset({
+    "unknown_bank", "conflicting_slots", "comparison_dimensions_missing",
+})
 
 _EXTRACT_PRODUCTS = frozenset(PRODUCT_TERMS)
 _EXTRACT_METRICS = frozenset(METRIC_TERMS)
@@ -657,6 +791,8 @@ _EXTRACT_FEE_EVENTS = frozenset({
 })
 _EXTRACT_VALUE_TYPES = frozenset({"min", "percent", "max", "value"})
 _EXTRACT_AMOUNT_BANDS = frozenset({"minimum", "maximum"})
+_EXTRACT_CURRENCIES = frozenset(CURRENCY_TERMS)
+_EXTRACT_CUSTOMER_SEGMENTS = frozenset(CUSTOMER_SEGMENT_TERMS)
 _EXTRACT_KINDS = frozenset({"availability", "value_comparison"})
 _EXTRACT_DECLINES = frozenset({
     "unknown_bank", "missing_product", "conflicting_slots", "missing_key",
@@ -673,6 +809,10 @@ def _EXTRACTOR_SYSTEM(catalog: tuple[str, ...]) -> str:
     fee_events = json.dumps(sorted(_EXTRACT_FEE_EVENTS), ensure_ascii=False)
     value_types = json.dumps(sorted(_EXTRACT_VALUE_TYPES), ensure_ascii=False)
     amount_bands = json.dumps(sorted(_EXTRACT_AMOUNT_BANDS), ensure_ascii=False)
+    currencies = json.dumps(sorted(_EXTRACT_CURRENCIES), ensure_ascii=False)
+    customer_segments = json.dumps(
+        sorted(_EXTRACT_CUSTOMER_SEGMENTS), ensure_ascii=False,
+    )
     kinds = json.dumps(sorted(_EXTRACT_KINDS), ensure_ascii=False)
     declines = json.dumps(sorted(_EXTRACT_DECLINES), ensure_ascii=False)
     return f"""Ti je nxjerrësi semantik i fushave për tarifat dhe normat bankare.
@@ -681,7 +821,7 @@ kërkon tarifë, normë, krahasim ose disponueshmëri produkti, kthe
 {{"is_rate_ask":false}}. Përndryshe kthe gjithmonë të gjitha fushat e kësaj
 skeme: is_rate_ask, kind, bank_scope, banks, product, metric, family,
 availability, has_price_qualifier, fee_event, value_type, term_months,
-amount_band, decline_reason.
+amount_band, currency, customer_segment, decline_reason.
 
 Përdor vetëm këto vlera të mbyllura:
 - bankat e njohura (etiketat duhen kopjuar saktësisht): {banks}
@@ -693,6 +833,8 @@ Përdor vetëm këto vlera të mbyllura:
 - fee_event: {fee_events} ose null
 - value_type: {value_types} ose null
 - amount_band: {amount_bands} ose null
+- currency: {currencies} ose null
+- customer_segment: {customer_segments} ose null
 - decline_reason: {declines} ose null
 - term_months: numër i plotë ose null; availability dhe has_price_qualifier:
   vetëm true ose false.
@@ -722,6 +864,11 @@ metric=null; një krahasim vetëm me komisione lejon product=null.
 administrimi -> fee_event="administration"; shlyerje e parakohshme ose pagesë
 e vonuar -> fee_event përkatës; minimum/maksimum/përqindje -> value_type dhe,
 kur i referohet shumës, amount_band përkatës.
+8. Currency lejohet vetëm nga fjalët: lek/leke/lekë -> "ALL"; euro/eur ->
+"EUR"; dollar/dollare/dollarë/usd -> "USD". Customer_segment lejohet vetëm
+nga: individ/individë/personal/person fizik -> "individual";
+biznes/biznese/kompani/shoqëri/person juridik -> "business". Për çdo formulim
+tjetër përdor null; mos hamendëso.
 
 Shembuj të plotë:
 Pyetje: cilat banka ofrojne kredi konsumatore?
@@ -774,7 +921,6 @@ def _validated_enum(raw: dict, key: str, universe: frozenset[str]) -> str | None
 
 def _validate_extracted(raw: dict, question: str) -> tuple[RateIntent | None, str]:
     """Validate an extracted candidate and build only closed-universe intents."""
-    del question
     if not isinstance(raw, dict):
         return None, "missing_key"
     if raw.get("is_rate_ask") is False:
@@ -809,6 +955,11 @@ def _validate_extracted(raw: dict, question: str) -> tuple[RateIntent | None, st
     fee_event = _validated_enum(raw, "fee_event", _EXTRACT_FEE_EVENTS)
     value_type = _validated_enum(raw, "value_type", _EXTRACT_VALUE_TYPES)
     amount_band = _validated_enum(raw, "amount_band", _EXTRACT_AMOUNT_BANDS)
+    folded_question = fold(question)
+    currency = _conservative_value(folded_question, CURRENCY_TERMS)
+    customer_segment = _conservative_value(
+        folded_question, CUSTOMER_SEGMENT_TERMS,
+    )
     raw_term = raw.get("term_months")
     term_months = raw_term if (
         isinstance(raw_term, int) and not isinstance(raw_term, bool) and raw_term > 0
@@ -829,18 +980,39 @@ def _validate_extracted(raw: dict, question: str) -> tuple[RateIntent | None, st
             bank_scope=bank_scope, banks=banks, product=product, metric=None,
             fee_event=None, value_type=None, term_months=None,
             amount_band=None, breadth="product_metric", family=family,
-            availability=True,
+            availability=True, currency=currency,
+            customer_segment=customer_segment,
         ), ""
 
     if kind != "value_comparison":
         return None, "missing_key"
     if product is None and metric is None:
         return None, "missing_product"
+    is_comparison = any(term in folded_question for term in _COMPARISON_TERMS)
+    explicit_breadth = (
+        re.search(r"\bte\s+gjitha\b", folded_question) is not None
+        and bool(_matching_products(folded_question)
+                 or _matching_slots(folded_question, METRIC_TERMS))
+    )
+    wildcard_slots: set[str] = set()
+    if product is None:
+        if family is None and (is_comparison or explicit_breadth):
+            wildcard_slots.add("product")
+        elif family is None:
+            return None, "missing_product"
+    if metric is None:
+        if is_comparison:
+            wildcard_slots.add("metric")
+        else:
+            return None, "missing_key"
     leaf = bool(fee_event or value_type or term_months is not None or amount_band)
     return RateIntent(
         bank_scope=bank_scope, banks=banks, product=product, metric=metric,
         fee_event=fee_event, value_type=value_type, term_months=term_months,
         amount_band=amount_band, breadth="leaf" if leaf else "product_metric",
+        family=family if product is None else None,
+        currency=currency, customer_segment=customer_segment,
+        wildcard_slots=frozenset(wildcard_slots),
     ), ""
 
 
@@ -849,6 +1021,10 @@ def parse_rate_intent(question: str) -> RateParse:
     folded_question = fold(question)
     product_matches = _matching_products(folded_question)
     metric_matches = _matching_slots(folded_question, METRIC_TERMS)
+    currency = _conservative_value(folded_question, CURRENCY_TERMS)
+    customer_segment = _conservative_value(
+        folded_question, CUSTOMER_SEGMENT_TERMS,
+    )
     if "penalty" in metric_matches:
         # "interes/komision penalizues" names the penalty metric, not two
         # contradictory metrics.
@@ -866,14 +1042,15 @@ def parse_rate_intent(question: str) -> RateParse:
             bank_scope=bank_scope, banks=banks, product=None, metric=None,
             fee_event=None, value_type=None, term_months=None,
             amount_band=None, breadth="product_metric", family=family,
-            availability=True,
+            availability=True, currency=currency,
+            customer_segment=customer_segment,
         )
         return _certified_rate_parse(question, intent)
 
     # ---- Value/comparison ask ----
     rate_like = bool(metric_matches) or (
         bool(product_matches) and any(term in folded_question for term in _COMPARISON_TERMS)
-    )
+    ) or bool(product_matches and (currency is not None or customer_segment is not None))
     if not rate_like:
         return RateParse("not_rate", None, "")
 
@@ -890,10 +1067,10 @@ def parse_rate_intent(question: str) -> RateParse:
         intent = RateIntent(
             bank_scope=bank_scope, banks=banks, product=product_matches[0],
             metric=None, fee_event=None, value_type=None, term_months=None,
-            amount_band=None, breadth="product_metric",
+            amount_band=None, breadth="product_metric", currency=currency,
+            customer_segment=customer_segment,
+            wildcard_slots=frozenset({"metric"}),
         )
-        if not resolve_rate_rows(intent):
-            return RateParse("unsupported", intent, "missing_key")
         return _certified_rate_parse(question, intent)
     # Metric-only comparison ("krahaso ... per komisione"): no product slot.
     if is_comparison and not product_matches and metric_matches:
@@ -903,14 +1080,47 @@ def parse_rate_intent(question: str) -> RateParse:
             bank_scope=bank_scope, banks=banks, product=None,
             metric=metric_matches[0], fee_event=None, value_type=None,
             term_months=None, amount_band=None, breadth="product_metric",
+            currency=currency, customer_segment=customer_segment,
+            wildcard_slots=frozenset({"product"}),
         )
-        if not resolve_rate_rows(intent):
-            return RateParse("unsupported", intent, "missing_key")
+        return _certified_rate_parse(question, intent)
+    explicit_breadth = (
+        re.search(r"\bte\s+gjitha\b", folded_question) is not None
+        and bool(product_matches or metric_matches)
+    )
+    if explicit_breadth and not product_matches and len(metric_matches) == 1:
+        intent = RateIntent(
+            bank_scope=bank_scope, banks=banks, product=None,
+            metric=metric_matches[0], fee_event=None, value_type=None,
+            term_months=None, amount_band=None, breadth="product_metric",
+            currency=currency, customer_segment=customer_segment,
+            wildcard_slots=frozenset({"product"}),
+        )
         return _certified_rate_parse(question, intent)
     if not product_matches:
-        return RateParse("unsupported", None, "missing_product")
+        family = _resolve_family(product_matches, folded_question)
+        if family is None:
+            return RateParse("unsupported", None, "missing_product")
+        if len(metric_matches) != 1:
+            return RateParse("unsupported", None, "conflicting_slots")
+        intent = RateIntent(
+            bank_scope=bank_scope, banks=banks, product=None,
+            metric=metric_matches[0], fee_event=None, value_type=None,
+            term_months=None, amount_band=None, breadth="product_metric",
+            family=family, currency=currency,
+            customer_segment=customer_segment,
+        )
+        return _certified_rate_parse(question, intent)
     if len(product_matches) != 1:
         return RateParse("unsupported", None, "conflicting_slots")
+    if not metric_matches and (currency is not None or customer_segment is not None):
+        intent = RateIntent(
+            bank_scope=bank_scope, banks=banks, product=product_matches[0],
+            metric=None, fee_event=None, value_type=None, term_months=None,
+            amount_band=None, breadth="product_metric", currency=currency,
+            customer_segment=customer_segment,
+        )
+        return _certified_rate_parse(question, intent)
     if len(metric_matches) != 1:
         return RateParse("unsupported", None, "conflicting_slots")
 
@@ -945,9 +1155,9 @@ def parse_rate_intent(question: str) -> RateParse:
         term_months=term_months,
         amount_band=amount_band,
         breadth="leaf" if leaf else "product_metric",
+        currency=currency,
+        customer_segment=customer_segment,
     )
-    if not resolve_rate_rows(intent):
-        return RateParse("unsupported", intent, "missing_key")
     return _certified_rate_parse(question, intent)
 
 
@@ -970,7 +1180,9 @@ def parse_rate_intent_hybrid(question: str) -> RateParse:
         return lexical
     intent, decline = _validate_extracted(raw, question)
     if intent is not None:
-        return _certified_rate_parse(question, intent, model_report=raw)
+        return _certified_rate_parse(
+            question, intent, model_report=raw, require_resolution=False,
+        )
     if decline == "not_rate":
         return RateParse("not_rate", None, "")
     if decline not in _EXTRACT_DECLINES:
