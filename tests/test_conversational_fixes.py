@@ -24,6 +24,15 @@ from core.comparison import (parse_rate_intent, parse_rate_intent_hybrid,
 from core.router import is_answer_clarification_request
 
 
+def test_session_store_honors_explicit_session_id() -> None:
+    from core.callcenter import sessions
+    explicit = "user-supplied-session-123"
+    first = sessions.get(explicit)
+    second = sessions.get(explicit)
+    assert first.session_id == explicit
+    assert second is first  # persisted state (history / last_answer / frame)
+
+
 # ---- Fix 1: meta follow-ups ------------------------------------------------
 META_PHRASES = (
     "nuk e kuptoj",

@@ -214,7 +214,13 @@ class SessionStore:
                 session = self._sessions[requested_id]
                 session.updated_at = now
                 return session
-            session = Session(uuid.uuid4().hex, [], "", now)
+            # Honor an explicit client session id (the web UI adopts the
+            # server-sent id; API callers that pre-generate an id must be able
+            # to reuse it across turns — otherwise last_answer / the structured
+            # frame reset on EVERY turn). Fall back to a fresh uuid for None.
+            session = Session(
+                requested_id if requested_id else uuid.uuid4().hex, [], "", now,
+            )
             self._sessions[session.session_id] = session
             return session
 
