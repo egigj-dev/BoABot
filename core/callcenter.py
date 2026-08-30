@@ -157,6 +157,35 @@ class Session:
     updated_at: float
     last_outcome: Outcome | None = None
     last_handoff: bool = False
+    last_structured_frame: RateIntent | None = None
+
+
+def frame_effect(reason: DecisionReason) -> ContextEffect:
+    """Return the structured-frame lifecycle effect for a terminal reason."""
+    if reason is DecisionReason.CATALOG_EXACT_HIT:
+        return ContextEffect.REPLACE
+    if reason in {
+        DecisionReason.REPEAT,
+        DecisionReason.NEGATION_STATEMENT,
+        DecisionReason.FRAGMENT_META,
+        DecisionReason.SEMANTIC_SMALLTALK,
+        DecisionReason.SEMANTIC_META_FOLLOWUP,
+        DecisionReason.CATALOG_UNKNOWN_BANK,
+        DecisionReason.CATALOG_CONFLICTING_SLOTS,
+    }:
+        return ContextEffect.PRESERVE
+    return ContextEffect.CLEAR
+
+
+def next_structured_frame(
+        decision: Decision, previous: RateIntent | None) -> RateIntent | None:
+    """Apply the centralized outcome-driven lifecycle to a structured frame."""
+    effect = frame_effect(decision.reason)
+    if effect is ContextEffect.REPLACE:
+        return decision.rate_intent
+    if effect is ContextEffect.PRESERVE:
+        return previous
+    return None
 
 class SessionStore:
     """Bounded, process-local state; replace with Redis for multi-instance deployment."""
@@ -676,7 +705,8 @@ def _structured_rate_decision(question: str) -> Decision | None:
     )
 
 def decide(question: str, last_answer: str, history: list[dict[str, str]],
-           last_outcome: Outcome | None = None, last_handoff: bool = False) -> Decision:
+           last_outcome: Outcome | None = None, last_handoff: bool = False,
+           last_structured_frame: RateIntent | None = None) -> Decision:
     """Route a caller turn before it can reach retrieval or the model."""
     gate = input_gate(question)
     if not gate.allowed:

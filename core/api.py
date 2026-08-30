@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field, field_validator
 from .rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
 from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, DecisionReason,
-                        Outcome, decide, is_ambiguous_card_maintenance, sessions)
+                        Outcome, decide, is_ambiguous_card_maintenance,
+                        next_structured_frame, sessions)
 from .retrieve import embedding_stats
 from .retrieve import open_pool as open_retrieval_pool
 from .retrieve import shutdown as shutdown_retrieval
@@ -523,6 +524,10 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             req.question, session.last_answer, session.history,
             getattr(session, "last_outcome", None),
             getattr(session, "last_handoff", False),
+            getattr(session, "last_structured_frame", None),
+        )
+        session.last_structured_frame = next_structured_frame(
+            decision, getattr(session, "last_structured_frame", None),
         )
         handoff_score = decision.handoff_score
         if decision.outcome:
