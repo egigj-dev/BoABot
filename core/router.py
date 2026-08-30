@@ -84,6 +84,33 @@ _META_HELP_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Answer-clarification requests: the caller says they did NOT understand the
+# assistant's PREVIOUS answer ("nuk e kuptoj", "eshte e paqarte", "ma shpjego",
+# "mund ta sqarosh pak pergjigjen", "cfare do te thote kjo"). These are META
+# follow-ups about the last answer, NOT fresh banking queries — they must never
+# reach retrieval and never trigger the bank/product clarify loop. The
+# domain-anchor guard keeps genuine banking turns (which contain norm/interes/
+# kredi/... vocabulary) on the answer path.
+_ANSWER_CLARIFY_RE = re.compile(
+    r"\b(?:nuk\s+(?:e\s+|po\s+e\s+)?kuptoj\w*|nuk\s+(?:e\s+)?kuptova\w*|"
+    r"s(?:'|e)\s+kuptoj\w*|nuk\s+po\s+e\s+kuptoj\w*|"
+    r"(?:eshte\s+)?e\s+(?:paqart\w+|pakuptueshm\w+)|"
+    r"sqaro(?:je|sh|ni|ma)?\w*|shpjego(?:je|ni|sh|ma)?\w*|"
+    r"cfare\s+do\s+te\s+thote\b|cfare\s+kuptimi\s+ka\b|"
+    r"ma\s+shpjego\b|me\s+shpjego\b|ma\s+sqaro\b)",
+    re.IGNORECASE,
+)
+
+
+def is_answer_clarification_request(question: str) -> bool:
+    """True for meta turn asking to explain/clarify the PREVIOUS answer."""
+    normed = _norm(question).strip()
+    if not normed:
+        return False
+    if any(anchor in normed for anchor in _DOMAIN_ANCHORS):
+        return False
+    return _ANSWER_CLARIFY_RE.search(normed) is not None
+
 
 def is_meta_help(question: str) -> bool:
     """True for a turn that asks what/how the assistant can help (meta), no retrieval."""
@@ -136,6 +163,8 @@ def classify_turn(question: str, last_outcome=None, last_handoff: bool = False):
     if is_conversational_fragment(question):
         return "meta_followup"
     if is_meta_help(question):
+        return "meta_followup"
+    if is_answer_clarification_request(question):
         return "meta_followup"
     if not _enabled():
         return None

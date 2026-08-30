@@ -100,10 +100,9 @@ def test_rule5_metric_component_parsed_but_never_claimed() -> None:
     hits = structured_rate_hits(parsed.intent)
     rendered = render_rate_answer(parsed.intent, hits)
     # The scraped rows do not attribute values to nominal vs NEI; the renderer
-    # shows the band values as reported without labeling them nominal/NEI.
+    # shows the band values as reported and states that boundary in the note.
     assert "8.00" in rendered
-    assert rendered.count("nominal") == 0
-    assert "NEI" not in rendered
+    assert "nuk i atribuon çdo shifër" in rendered
 
 
 def test_medium_business_has_no_numeric_rows_missing_key() -> None:

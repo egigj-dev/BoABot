@@ -122,6 +122,7 @@ class DecisionReason(str, Enum):
     CATALOG_CONFLICTING_SLOTS = "catalog_conflicting_slots"
     COMPARISON_DIMENSIONS_MISSING = "comparison_dimensions_missing"
     MATURITY_BAND_REQUIRED = "maturity_band_required"
+    PRODUCT_CAPABILITY = "product_capability"
     PERSONAL_RECORD_CAPABILITY_BOUNDARY = "personal_record_capability_boundary"
     CATALOG_MISSING_KEY = "catalog_missing_key"
     SEMANTIC_INCIDENT = "semantic_incident"
@@ -563,6 +564,45 @@ def _is_catalog_speech(text: str) -> bool:
     )
 
 
+# ---- Product-capability statement (fix 2026-08-30) --------------------------
+# "cfare produktesh ofron secila prej bankave?" was answered with a regulatory
+# wall of text. The capability statement is the concise deterministic reply:
+# banks offer product categories; the caller picks a category/bank for real
+# figures. Fires ONLY for a bare capability ask — a price/rate term or a
+# concrete product word (kredi/depozite/karte) routes to the normal path.
+_PRODUCT_CAPABILITY_RE = re.compile(
+    r"\b(?:cfar\w*\s+(?:produkt\w*|sh(?:ë|e)rbim\w*)|"
+    r"cilat?\s+produkt\w*|cilet\s+produkt\w*)\b",
+    re.I,
+)
+_PRODUCT_CAPABILITY_OFFER_RE = re.compile(r"\b(?:ofron|ofrojne|ofrojn|japin)\b", re.I)
+_PRODUCT_CAPABILITY_EXCLUDE_RE = re.compile(
+    r"\b(?:tarif\w*|komision\w*|interes\w*|norm\w*|penalitet\w*|"
+    r"kredi\w*|depozit\w*|kart\w*|llogari\w*)\b",
+    re.I,
+)
+
+
+def _is_product_capability_speech(text: str) -> bool:
+    folded = fold(text)
+    return (
+        re.search(r"\bbank\w*\b", folded) is not None
+        and _PRODUCT_CAPABILITY_RE.search(folded) is not None
+        and _PRODUCT_CAPABILITY_OFFER_RE.search(folded) is not None
+        and _PRODUCT_CAPABILITY_EXCLUDE_RE.search(folded) is None
+    )
+
+
+def _product_capability_message() -> str:
+    return (
+        "Bankat tregtare ofrojnë një gamë produktesh e shërbimesh: kredi "
+        "(konsumatore dhe për shtëpi), depozita, karta debiti e krediti, "
+        "komisione dhe shërbime pagesash. Për të dhëna konkrete, më tregoni "
+        "kategorinë (p.sh. \"kredi konsumatore\" ose \"karta debiti\") ose "
+        "bankën, dhe do t'ju jap tarifat ose normat përkatëse."
+    )
+
+
 def _catalog_message() -> str | None:
     names = bank_names()
     if not names:
@@ -764,9 +804,32 @@ def _structured_rate_enabled() -> bool:
 
 
 def _fragment_meta_preflight(
-        question: str, last_handoff: bool = False) -> Decision | None:
+        question: str, last_handoff: bool = False,
+        last_answer: str = "") -> Decision | None:
     """Expose the deterministic never-retrieve fragment/meta floor."""
-    from .router import is_conversational_fragment, is_meta_help
+    from .router import (is_answer_clarification_request,
+                         is_conversational_fragment, is_meta_help)
+
+    if is_answer_clarification_request(question):
+        # Meta turn about the PREVIOUS answer: reference it, never ask the
+        # caller to re-clarify their banking question (that was the loop).
+        # Deterministic; the frame is preserved (FRAGMENT_META is in the
+        # PRESERVE set of next_structured_frame).
+        if last_answer and last_answer.strip():
+            excerpt = " ".join(last_answer.split())
+            if len(excerpt) > 400:
+                excerpt = excerpt[:400].rstrip() + "…"
+            message = (
+                "Përgjigja ime e mëparshme ishte: \"" + excerpt + "\". "
+                "Nëse një pjesë e saj nuk është e qartë (shifrat, termat ose "
+                "tabelat), më tregoni cilën dhe do ta shpjegoj më thjesht."
+            )
+        else:
+            message = META_FOLLOWUP_MESSAGE
+        return Decision(
+            Outcome.ANSWER, message, question=question,
+            handoff=last_handoff, reason=DecisionReason.FRAGMENT_META,
+        )
 
     if not (is_conversational_fragment(question) or is_meta_help(question)):
         return None
@@ -847,10 +910,11 @@ def _structured_rate_decision(
         elif parsed.reason == "comparison_dimensions_missing":
             labels = {
                 "currency": "monedha",
-                "term_months": "afati",
+                "term_months": "afati (muaj)",
                 "amount_band": "shuma",
                 "customer_segment": "segmenti (individë apo biznese)",
                 "fee_event": "lloji i komisionit",
+                "loan_type": "lloji i kredisë (konsumatore, shtëpi/hipotekare, biznes)",
             }
             dimensions = [
                 labels[item] for item in (
@@ -955,9 +1019,19 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     # [SUPERSEDED] This floor previously lived only inside router.classify_turn /
     # analyze_turn, which made its pre-retrieval position implicit. The router
     # checks remain for compatibility, but this exposed preflight is authoritative.
-    fragment_meta = _fragment_meta_preflight(clean_question, last_handoff)
+    fragment_meta = _fragment_meta_preflight(clean_question, last_handoff, last_answer)
     if fragment_meta is not None:
         return fragment_meta
+
+    # ---- Product-capability statement (deterministic, BEFORE the router) ----
+    # Bare "cfare produktesh ofron secila banke?" gets the concise capability
+    # summary + filter offer instead of a regulatory wall of text.
+    if _is_product_capability_speech(clean_question):
+        return Decision(
+            Outcome.ANSWER, _product_capability_message(),
+            question=clean_question, handoff=False,
+            reason=DecisionReason.PRODUCT_CAPABILITY,
+        )
 
     # ---- Personal-record capability boundary (deterministic, BEFORE router) ----
     # Account actions and incidents retain their higher-priority handling.

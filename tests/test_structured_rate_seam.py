@@ -498,8 +498,8 @@ _UNREACHABLE_BY_SECTION_6_1 = {
 @pytest.mark.parametrize(
     ("question", "expected", "product", "metric", "family"),
     (
-        ("cilat banka ofrojne kredi konsumatore?", "resolved", "consumer_credit_unsecured", None, "consumer_credit"),
-        ("cila banke ofron depozita?", "resolved", "deposit", None, "deposit"),
+        ("cilat banka ofrojne kredi konsumatore?", "resolved", None, None, "consumer_credit"),
+        ("cila banke ofron depozita?", "resolved", None, None, "deposit"),
         ("a ofrojne bankat kredi?", "resolved", None, None, "credit"),
         ("bankat qe ofrojne kredi...", "resolved", None, None, "credit"),
         ("cilat banka ofrojne kredi me interes te ulet?", "fallthrough", None, None, None),

@@ -167,8 +167,8 @@ PRODUCT_TERMS = {
 }
 METRIC_TERMS = {
     "interest_rate": (
-        "interes", "interesi", "interesit", "norme", "norma", "normen",
-        "normat", "normave",
+        "interes", "interesi", "interesit", "interesin", "interesave",
+        "norme", "norma", "normen", "normat", "normave",
         "nei", "nominale",
     ),
     "fee": (
@@ -239,6 +239,7 @@ ALL_BANK_TERMS = (
     "banke per banke", "ne shqiperi",
     # Bounded inflection variants present in the evaluated transcripts.
     "secila banka", "cdo banka", "bankat ne shqiperi", "ne shqipari",
+    "secilen banke", "secilen banka", "secilin banke", "nga secila banke",
 )
 # ---- Yes/no availability ("a ofrojne X kredi konsumatore?") ----
 # Bounded offer verbs; fold() strips diacritics (ofrojne -> ofrojne).
@@ -296,9 +297,9 @@ _CERTIFIABLE_RESIDUE = _QUERY_STOPWORDS | frozenset({
     "dua", "di", "do", "edhe", "jane", "jo", "ju", "lutem", "ma", "mund", "nje", "po",
     "nga", "nese", "prej", "qe", "rreth", "se", "tek", "trego", "tregoni", "thjesht", "tyre",
     "maturitet", "maturiteti", "maturitetin", "maturitetesh", "maturitete",
-    # Discourse/interest verbs (c23 lead "Me interesojn ...").
+    # Discourse/interest verbs (c23 lead "Me interesojn ...") + "dua te marr".
     "interesoj", "interesojn", "intereson", "interesojne", "interesohem",
-    "jane", "eshte",
+    "jane", "eshte", "marr", "marrje", "mora",
 })
 _COVERAGE_TOKEN_RE = re.compile(r"[^\W_]+|%", re.UNICODE)
 _CERTIFIABLE_TERM_RE = re.compile(
@@ -450,11 +451,16 @@ def _explicit_unknown_bank(folded_question: str, known_banks: tuple[str, ...]) -
     aliases = tuple(alias for alias, _label in _bank_aliases())
 
     # "Banka/Banken Xyzzy": a bounded phrase after the bank noun must either
-    # contain a trusted alias or be an all-bank phrase.
+    # contain a trusted alias or be an all-bank phrase. Offer verbs bound the
+    # tail too — "cila banke ofron interesin..." must not read "ofron" as a
+    # possible bank name.
     for match in _BANK_WORD_RE.finditer(folded_question):
         tail = folded_question[match.end():]
-        tail = re.split(r"[,;?]|\b(?:per|me|ka|tarif\w*|komision\w*|norm\w*|interes\w*)\b",
-                        tail, maxsplit=1)[0].strip()
+        tail = re.split(
+            r"[,;?]|\b(?:per|me|ka|ofron\w*|ofroj\w*|japin|jep|"
+            r"tarif\w*|komision\w*|norm\w*|interes\w*)\b",
+            tail, maxsplit=1,
+        )[0].strip()
         words = re.findall(r"[^\W_]+", tail, flags=re.UNICODE)[:5]
         candidates = [word for word in words if word not in _UNKNOWN_BANK_STOP]
         if not candidates:
@@ -690,8 +696,22 @@ def _certified_rate_parse(
         return RateParse("resolved", intent, "", coverage)
     if _superlative_ask(question):
         # Product-labeled NEI/credit rows are listable but cannot establish a
-        # bank ranking. Keep them on the honest dense fall-through path.
+        # bank ranking. Keep them on the honest dense fall-through path —
+        # BUT for a bare family ask (family set, e.g. "kredi" + "me te mire")
+        # a bank ranking is impossible without the caller naming the loan
+        # type/segment/term: CLARIFY for those, never a generic abstain.
         if not intent.banks or not all(row["_bank_lines"] for row in rows):
+            if intent.family in PRODUCT_FAMILY:
+                comparison_coverage = coverage._replace(
+                    status=StructuredIntentStatus.INSUFFICIENT_COMPARISON_DIMENSIONS,
+                    unresolved_qualifiers=(
+                        "loan_type", "customer_segment", "term_months",
+                    ),
+                )
+                return RateParse(
+                    "unsupported", intent, "comparison_dimensions_missing",
+                    comparison_coverage,
+                )
             return RateParse("unsupported", intent, "missing_key", coverage)
         missing = _missing_comparison_dimensions(intent, rows)
         if missing is None:
@@ -941,6 +961,11 @@ def _elliptical_slot_values(question: str) -> dict[str, object]:
     elif not product_matches and family is not None:
         values["product"] = None
         values["family"] = family
+    elif not values and "biznes" in folded_question:
+        # Elliptical business follow-up ("po per biznese?") switches the
+        # subject to the business-rate FAMILY (not a banking product). Kept
+        # last so a concrete product/bank term always wins.
+        values["family"] = BUSINESS_FAMILY
     if len(metric_matches) == 1:
         values["metric"] = metric_matches[0]
     if banks:
@@ -981,6 +1006,16 @@ def merge_elliptical(question: str, frame: RateIntent) -> RateIntent | None:
         updates["product"] = values["product"]
         updates["family"] = values["family"]
         wildcard_slots.discard("product")
+    elif values.get("family") == BUSINESS_FAMILY:
+        # Elliptical business follow-up: switch the family, drop product, and
+        # set the business segment for certification ("biznes" is consumed as
+        # a customer-segment phrase). Band stays inherited from the frame if
+        # the frame already carried one.
+        updates["family"] = BUSINESS_FAMILY
+        updates["product"] = None
+        updates["customer_segment"] = "business"
+        wildcard_slots.discard("product")
+        wildcard_slots.discard("metric")
     if "metric" in values:
         updates["metric"] = values["metric"]
         wildcard_slots.discard("metric")
@@ -1260,7 +1295,12 @@ def parse_rate_intent(question: str) -> RateParse:
         metric_matches = ["penalty"]
 
     # ---- Yes/no availability branch (offered/family ask, no metric needed) ----
-    if _offer_verbs_present(folded_question):
+    # "Ofron" + a price word ("ofron interesin me te mire", "kredi me interes
+    # te ulet") is a VALUE/comparison ask, not plain availability — those must
+    # reach the superlative/comparison paths (CLARIFY for missing dims, never
+    # a bare yes/no).
+    if _offer_verbs_present(folded_question) and not (
+            _superlative_ask(folded_question) or metric_matches):
         bank_scope, banks, bank_error = _bank_scope(folded_question)
         if bank_error:
             return RateParse("unsupported", None, bank_error)
@@ -1311,14 +1351,18 @@ def parse_rate_intent(question: str) -> RateParse:
         )
         return _certified_rate_parse(question, intent)
     # Metric-only comparison ("krahaso ... per komisione"): no product slot.
+    # A bare family term ("per kredi") still names the product FAMILY, so the
+    # family is resolved and certified — never treated as corpus absence.
     if is_comparison and not product_matches and metric_matches:
         if len(metric_matches) != 1:
             return RateParse("unsupported", None, "conflicting_slots")
+        family = _resolve_family(product_matches, folded_question)
         intent = RateIntent(
             bank_scope=bank_scope, banks=banks, product=None,
             metric=metric_matches[0], fee_event=None, value_type=None,
             term_months=None, amount_band=None, breadth="product_metric",
             currency=currency, customer_segment=customer_segment,
+            family=family or None,
             wildcard_slots=frozenset({"product"}),
         )
         return _certified_rate_parse(question, intent)
@@ -1327,11 +1371,13 @@ def parse_rate_intent(question: str) -> RateParse:
         and bool(product_matches or metric_matches)
     )
     if explicit_breadth and not product_matches and len(metric_matches) == 1:
+        family = _resolve_family(product_matches, folded_question)
         intent = RateIntent(
             bank_scope=bank_scope, banks=banks, product=None,
             metric=metric_matches[0], fee_event=None, value_type=None,
             term_months=None, amount_band=None, breadth="product_metric",
             currency=currency, customer_segment=customer_segment,
+            family=family or None,
             wildcard_slots=frozenset({"product"}),
         )
         return _certified_rate_parse(question, intent)
@@ -1556,7 +1602,8 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
     if intent.family == BUSINESS_FAMILY:
         return _render_business_rate_answer(intent, hits)
     lines_by_bank: dict[str, list[str]] = {bank: [] for bank in intent.banks}
-    product_lines: list[str] = []
+    product_lines: dict[str, list[str]] = {}
+    product_order: list[str] = []
     for hit in hits:
         article = str(hit.get("article") or "")
         for line in str(hit.get("text") or "").splitlines()[1:]:
@@ -1567,7 +1614,13 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
             canonical = next((name for name in intent.banks if fold(name) == fold(bank)), None)
             value = line[match.end(1) + 1:].strip()
             if canonical is None:
-                product_lines.append(f"- {article}: {value}")
+                # Product-labeled row (credit/business aggregates): group by
+                # article, dedupe values — never a wall of repeated lines.
+                values = product_lines.setdefault(article, [])
+                if value not in values:
+                    values.append(value)
+                if article not in product_order:
+                    product_order.append(article)
                 continue
             lines_by_bank[canonical].append(f"- {article}: {value}")
     rendered: list[str] = []
@@ -1575,7 +1628,15 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
         items = lines_by_bank.get(bank) or []
         if items:
             rendered.extend((f"{bank}:", *items))
-    rendered.extend(product_lines)
+    rendered.extend(f"- {article}: {', '.join(product_lines[article])}"
+                    for article in product_order)
+    if product_lines and not any(lines_by_bank.values()):
+        # Whole render is product-labeled aggregates: state the boundary
+        # instead of leaving unexplained value arrays.
+        rendered.append(
+            "Vlera siç raportohen nga Banka e Shqipërisë; tabela nuk i "
+            "atribuon çdo shifër një banke të caktuar."
+        )
     return "\n".join(rendered)
 
 
@@ -1583,10 +1644,11 @@ def _render_business_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
     """Render the business nominal/NEI table as reported (rule 5: no kredi).
 
     Every value is shown as the table reports it — the scraped rows do not
-    attribute values to the nominal vs NEI column, so the renderer NEVER labels
-    a value nominal/NEI (matching the C4 no-fold decision). Band ordering is
-    deterministic by band start. Values dedupe (a repeated identical figure
-    across scraped rows adds no information).
+    attribute values to the nominal vs NEI column or to a bank, so the renderer
+    NEVER labels a value nominal/NEI (matching the C4 no-fold decision). Band
+    ordering is deterministic by band start. Values dedupe (a repeated
+    identical figure across scraped rows adds no information). A closing note
+    states the attribution boundary explicitly instead of leaving bare arrays.
     """
     grouped: dict[tuple[str, str], list[str]] = {}
     order: list[tuple[str, str]] = []
@@ -1614,6 +1676,11 @@ def _render_business_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
         for src, dst in label_fix.items():
             label = label.replace(src, dst)
         lines.append(f"{label} — {item}: {', '.join(grouped[key])}")
+    lines.append(
+        "Shifrat janë norma përqindjeje të raportuara nga Banka e Shqipërisë; "
+        "tabela e publikuar nuk i atribuon çdo shifër normës nominale apo NEI-së "
+        "apo një banke të caktuar."
+    )
     return "\n".join(lines)
 
 

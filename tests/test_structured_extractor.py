@@ -81,7 +81,7 @@ def test_hybrid_gate_returns_lexical_result(monkeypatch, disabled) -> None:
                 has_price_qualifier=False,
             ),
             {
-                "bank_scope": "all", "product": "consumer_credit_unsecured",
+                "bank_scope": "all", "product": None,
                 "metric": None, "family": "consumer_credit", "availability": True,
                 "breadth": "product_metric",
             },
@@ -214,8 +214,11 @@ def test_extractor_failure_or_non_dict_is_identical_to_lexical(monkeypatch, raw)
 
 def test_extracted_non_rate_maps_to_not_rate(monkeypatch) -> None:
     _enable(monkeypatch)
+    # Unknown-bank lexical outcome so the EXTRACTOR is actually consulted; the
+    # extractor's is_rate_ask=false must map to not_rate (never to the lexical
+    # unknown_bank).
     monkeypatch.setattr(comparison, "_extract_rate_slots", lambda _q: {"is_rate_ask": False})
-    parsed = comparison.parse_rate_intent_hybrid("cilat banka ofrojne kredi konsumatore?")
+    parsed = comparison.parse_rate_intent_hybrid("a ofron Banka Xyzzy kredi konsumatore?")
     assert parsed == comparison.RateParse("not_rate", None, "")
 
 
