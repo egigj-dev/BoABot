@@ -1,5 +1,6 @@
 # api.py — FastAPI wrapper with SSE.
 # events: tool, token, error, done
+import dataclasses
 import json
 import hmac
 import logging
@@ -18,8 +19,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from .rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
-from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, DecisionReason,
-                        Outcome, _structured_rate_decision, decide,
+from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, DecisionEvent,
+                        DecisionReason, Outcome, _structured_rate_decision, decide,
                         is_ambiguous_card_maintenance, next_structured_frame,
                         sessions)
 from .comparison import is_elliptical_rate_turn
@@ -512,6 +513,10 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
 
     def done_event(value, **kwargs):
         event = json.loads(turn_done(value, session.session_id, usage=usage, **kwargs)[6:])
+        if os.environ.get("BOABOT_DEBUG") == "1":
+            event["trace_flags"] = sorted(
+                flag.value for flag in (decision.trace_flags if decision else ())
+            )
         return emit(event)
 
     def emit_policy_message(message: str):
@@ -563,15 +568,31 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 rewrite_used = needs_rewrite(decision.question, session.history)
                 standalone_query = rewrite(decision.question, session.history) \
                                    if rewrite_used else decision.question
+            if rewrite_used:
+                decision = dataclasses.replace(
+                    decision,
+                    trace_flags=decision.trace_flags | {
+                        DecisionEvent.query_rewritten,
+                    },
+                )
         if (rate_intent is None
                 and (rewrite_used or is_elliptical_rate_turn(decision.question))):
             reparsed = _structured_rate_decision(standalone_query)
             if reparsed is not None:
-                decision = reparsed
-                session.last_structured_frame = next_structured_frame(
-                    decision, getattr(session, "last_structured_frame", None),
-                )
-                rate_intent = decision.rate_intent
+                if reparsed.rate_intent is None:
+                    decision = dataclasses.replace(
+                        decision,
+                        trace_flags=decision.trace_flags | reparsed.trace_flags,
+                    )
+                else:
+                    decision = dataclasses.replace(
+                        reparsed,
+                        trace_flags=reparsed.trace_flags | decision.trace_flags,
+                    )
+                    session.last_structured_frame = next_structured_frame(
+                        decision, getattr(session, "last_structured_frame", None),
+                    )
+                    rate_intent = decision.rate_intent
         yield emit({"type": "tool", "query": standalone_query})
         if rate_intent is None and is_ambiguous_card_maintenance(standalone_query):
             sessions.record(

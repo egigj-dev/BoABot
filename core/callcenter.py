@@ -102,6 +102,7 @@ class DecisionEvent(Enum):
     query_rewritten = "query_rewritten"
     structured_lookup = "structured_lookup"
     unresolved_qualifier_detected = "unresolved_qualifier_detected"
+    # Wired by the plan-P2 fidelity-drop work when rag.ask surfaces drops.
     fidelity_sentence_drop = "fidelity_sentence_drop"
 
 
@@ -526,7 +527,10 @@ def _fallback_label(question: str) -> str:
     return "answer"
 
 
-def _route_label(label: str, question: str, last_handoff: bool) -> Decision | None:
+def _route_label(
+        label: str, question: str, last_handoff: bool,
+        trace_flags: frozenset[DecisionEvent] = frozenset(),
+        ) -> Decision | None:
     """Map a router label to a terminal Decision; return None to fall through."""
     if label == "catalog":
         # Fail-closed: an LLM "catalog" label only short-circuits to the canned
@@ -542,25 +546,30 @@ def _route_label(label: str, question: str, last_handoff: bool) -> Decision | No
         message = _catalog_message()
         if message:
             return Decision(Outcome.ANSWER, message, question=question,
-                            handoff=False, reason=DecisionReason.BANK_CATALOG_LIST)
+                            handoff=False, reason=DecisionReason.BANK_CATALOG_LIST,
+                            trace_flags=trace_flags)
         return None
     if label == "smalltalk":
         return Decision(Outcome.ANSWER, _smalltalk_reply(question),
                         question=question, handoff=False,
-                        reason=DecisionReason.SEMANTIC_SMALLTALK)
+                        reason=DecisionReason.SEMANTIC_SMALLTALK,
+                        trace_flags=trace_flags)
     if label == "out_of_domain":
         return Decision(Outcome.UNSUPPORTED, OUT_OF_DOMAIN_MESSAGE,
                         question=question, handoff=False,
-                        reason=DecisionReason.SEMANTIC_OUT_OF_DOMAIN)
+                        reason=DecisionReason.SEMANTIC_OUT_OF_DOMAIN,
+                        trace_flags=trace_flags)
     if label == "meta_followup":
         msg = META_FOLLOWUP_HANDOFF_MESSAGE if last_handoff else META_FOLLOWUP_MESSAGE
         return Decision(Outcome.ANSWER, msg, question=question,
                         handoff=last_handoff,
-                        reason=DecisionReason.SEMANTIC_META_FOLLOWUP)
+                        reason=DecisionReason.SEMANTIC_META_FOLLOWUP,
+                        trace_flags=trace_flags)
     if label == "legal_advice":
         return Decision(Outcome.UNSUPPORTED, LEGAL_ADVICE_MESSAGE,
                         question=question, handoff=False,
-                        reason=DecisionReason.SEMANTIC_LEGAL_ADVICE)
+                        reason=DecisionReason.SEMANTIC_LEGAL_ADVICE,
+                        trace_flags=trace_flags)
     if label == "account_action":
         # Fail-closed: an LLM "account_action" only escalates when the
         # deterministic account-action vocabulary is actually present. Vague or
@@ -569,10 +578,12 @@ def _route_label(label: str, question: str, last_handoff: bool) -> Decision | No
         if not _is_account_action(question):
             return None
         return Decision(Outcome.HANDOFF, ACCOUNT_HANDOFF_MESSAGE,
-                        handoff=True, reason=DecisionReason.SEMANTIC_ACCOUNT_ACTION)
+                        handoff=True, reason=DecisionReason.SEMANTIC_ACCOUNT_ACTION,
+                        trace_flags=trace_flags)
     if label in ("incident", "incident_handoff"):
         return Decision(Outcome.HANDOFF, SECURITY_HANDOFF_MESSAGE,
-                        handoff=True, reason=DecisionReason.SEMANTIC_INCIDENT)
+                        handoff=True, reason=DecisionReason.SEMANTIC_INCIDENT,
+                        trace_flags=trace_flags)
     if label == "clarify":
         # A generic "clarify" (confused / needs-disambiguation turn) asks the
         # user to restate — NOT the card-specific text. The card-debit/credit
@@ -583,7 +594,8 @@ def _route_label(label: str, question: str, last_handoff: bool) -> Decision | No
         msg = CARD_CLARIFY_MESSAGE if is_ambiguous_card_maintenance(question) \
             else CLARIFY_MESSAGE
         return Decision(Outcome.CLARIFY, msg, question=question,
-                        reason=DecisionReason.SEMANTIC_CLARIFY)
+                        reason=DecisionReason.SEMANTIC_CLARIFY,
+                        trace_flags=trace_flags)
     return None  # "answer" / unknown -> fall through to retrieval
 
 
@@ -734,9 +746,21 @@ def _structured_rate_decision(
                     None, question=question,
                     reason=DecisionReason.CATALOG_EXACT_HIT,
                     rate_intent=merged,
+                    trace_flags=frozenset({
+                        DecisionEvent.context_inherited,
+                        DecisionEvent.structured_lookup,
+                    }),
                 )
         return None
     if parsed.status == "unsupported":
+        if parsed.reason == "unrepresented_semantics":
+            return Decision(
+                None, question=question,
+                reason=DecisionReason.DENSE_RETRIEVAL,
+                trace_flags=frozenset({
+                    DecisionEvent.unresolved_qualifier_detected,
+                }),
+            )
         if parsed.reason not in CATALOG_DECLINE_REASONS:
             return None
         message = NO_EVIDENCE_MESSAGE
@@ -772,10 +796,15 @@ def _structured_rate_decision(
             Outcome.CLARIFY, message, question=question,
             reason=reason,
             rate_intent=parsed.intent,
+            trace_flags=(
+                frozenset({DecisionEvent.structured_lookup})
+                if parsed.intent is not None else frozenset()
+            ),
         )
     return Decision(
         None, question=question, reason=DecisionReason.CATALOG_EXACT_HIT,
         rate_intent=parsed.intent,
+        trace_flags=frozenset({DecisionEvent.structured_lookup}),
     )
 
 def decide(question: str, last_answer: str, history: list[dict[str, str]],
@@ -853,12 +882,15 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     # ---- Typed structured-rate seam (opt-in, BEFORE every LLM/vector call) ----
     # Account actions, active incidents, and ambiguous-card turns explicitly
     # cede to their existing higher-priority routing/backstop paths.
+    trace_flags: frozenset[DecisionEvent] = frozenset()
     if _structured_rate_enabled() and _structured_rate_eligible(clean_question):
         structured = _structured_rate_decision(
             clean_question, frame=last_structured_frame,
         )
         if structured is not None:
-            return structured
+            if structured.reason is not DecisionReason.DENSE_RETRIEVAL:
+                return structured
+            trace_flags = structured.trace_flags
 
     # ---- LLM turn-router (semantic intent, fused when ON) ----
     # Step 2b: when the router is enabled, ONE fused call returns the intent
@@ -889,7 +921,7 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
         label = _classify_turn(clean_question, last_outcome, last_handoff)
         if label is None:
             label = _fallback_label(clean_question)
-    routed = _route_label(label, clean_question, last_handoff)
+    routed = _route_label(label, clean_question, last_handoff, trace_flags)
     if routed is not None:
         return routed
 
@@ -901,6 +933,7 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
         return Decision(
             Outcome.HANDOFF, ACCOUNT_HANDOFF_MESSAGE, handoff=True,
             reason=DecisionReason.ACCOUNT_ACTION_BACKSTOP,
+            trace_flags=trace_flags,
         )
 
     query_embedding = _encode_question(clean_question)
@@ -915,6 +948,7 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
             Outcome.HANDOFF, SECURITY_HANDOFF_MESSAGE, handoff=True,
             query_embedding=query_embedding, handoff_score=incident_score,
             reason=DecisionReason.INCIDENT_BACKSTOP,
+            trace_flags=trace_flags,
         )
     account_score = _account_action_score(query_embedding)
     # [SUPERSEDED] Ambiguous card-maintenance handled by the router label
@@ -926,4 +960,5 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     return Decision(None, question=clean_question, query_embedding=query_embedding,
                     handoff_score=account_score,
                     reason=DecisionReason.DENSE_RETRIEVAL,
-                    rewritten_query=fused_rewrite, legal_flags=fused_legal)
+                    rewritten_query=fused_rewrite, legal_flags=fused_legal,
+                    trace_flags=trace_flags)
