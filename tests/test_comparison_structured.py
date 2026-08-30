@@ -74,6 +74,17 @@ def test_rate_intent_none_goes_to_dense_retrieval(monkeypatch) -> None:
     assert refusal
 
 
+def test_generic_other_banks_phrase_keeps_named_bank_scope() -> None:
+    parsed = comparison.parse_rate_intent(
+        "Sa eshte komisioni per terheqje cash nga banka te tjera me karte "
+        "debiti ne Banka Union?"
+    )
+    assert parsed.intent is not None
+    assert parsed.intent.bank_scope == "named"
+    assert parsed.intent.banks == ("Banka Union",)
+    assert parsed.reason != "unknown_bank"
+
+
 def test_query_rate_tables_only_copies_requested_bank_rows() -> None:
     intent = comparison.comparison_intent(
         "Krahaso BKT, Credins dhe OTP për komisione të kredisë konsumatore"

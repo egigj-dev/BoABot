@@ -201,7 +201,7 @@ _BANK_WORD_RE = re.compile(r"\bbank(?:a|e|en|es|at)?\b", re.I)
 _UNKNOWN_BANK_STOP = frozenset({
     "banke", "banka", "bankat", "bankes", "banken", "cdo", "secila",
     "te", "gjitha", "nga", "ne", "per", "dhe", "e", "shqiperi",
-    "shqipari", "me", "nje",
+    "shqipari", "me", "nje", "tjera", "tjerat", "tjetra", "tjeter",
 })
 _CERTIFIABLE_BANK_ALIASES = {
     "aib": "Banka Amerikane e Investimeve Shqiperi",
