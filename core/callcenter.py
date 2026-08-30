@@ -42,6 +42,12 @@ LEGAL_ADVICE_MESSAGE = (
     "drejtat tuaja dhe hapat që mund të ndërmerrni, ju lutem konsultohuni me një "
     "avokat ose me bankën tuaj."
 )
+PERSONAL_RECORD_CAPABILITY_MESSAGE = (
+    "Nuk kam qasje në të dhënat tuaja në Regjistrin e Kredive dhe nuk mund ta "
+    "verifikoj raportin tuaj. Për ta marrë raportin, paraqisni një kërkesë me "
+    "shkrim pranë Regjistrit të Kredive sipas procedurës së përshkruar në “Norma "
+    "e Regjistrit të Kredive”. Mund t'ju shpjegoj si funksionon regjistri."
+)
 OUT_OF_DOMAIN_MESSAGE = (
     "Kjo pyetje është jashtë fushës së shërbimit tim, që është informacioni për "
     "rregulloret bankare shqiptare dhe tarifat e bankave. Nuk mund të jap "
@@ -113,6 +119,7 @@ class DecisionReason(str, Enum):
     CATALOG_UNKNOWN_BANK = "catalog_unknown_bank"
     CATALOG_CONFLICTING_SLOTS = "catalog_conflicting_slots"
     COMPARISON_DIMENSIONS_MISSING = "comparison_dimensions_missing"
+    PERSONAL_RECORD_CAPABILITY_BOUNDARY = "personal_record_capability_boundary"
     CATALOG_MISSING_KEY = "catalog_missing_key"
     SEMANTIC_INCIDENT = "semantic_incident"
     SEMANTIC_ACCOUNT_ACTION = "semantic_account_action"
@@ -410,6 +417,42 @@ _NEGATION_STATEMENT_RE = re.compile(
 
 def _is_negation_statement(text: str) -> bool:
     return _NEGATION_STATEMENT_RE.search(fold(text)) is not None
+
+
+# ---- Personal Credit Registry record capability boundary ------------------
+_PERSONAL_RECORD_STRONG_RE = re.compile(
+    r"\b(?:"
+    r"ne\s+emrin\s+tim|"
+    r"te\s+dhenat\s+e\s+mia|"
+    r"raporti\s+im\s+i\s+kredimarresit|"
+    r"a\s+figuroj|"
+    r"a\s+kam\s+kredi\s+aktive|"
+    r"a\s+kam\s+kredi\b.{0,80}\bne\s+emrin\s+tim|"
+    r"a\s+nuk\s+kam\s+kredi|"
+    r"nuk\s+kam\s+kredi\b[^?!.]{0,40}\bapo\s+jo"
+    r")\b",
+    re.I,
+)
+_PERSONAL_RECORD_CONTEXT_RE = re.compile(
+    r"\b(?:per\s+mua|rreth\s+meje|informacionin\s+tim)\b",
+    re.I,
+)
+_PERSONAL_RECORD_REGISTRY_RE = re.compile(
+    r"\b(?:regjistri\s+i\s+kredive|kredi\s+aktive|kredi\s+problematike|"
+    r"raport\s+kredimarresi|te\s+dhena\s+personale)\b",
+    re.I,
+)
+
+
+def _is_personal_record_request(text: str) -> bool:
+    folded = fold(text)
+    return (
+        _PERSONAL_RECORD_STRONG_RE.search(folded) is not None
+        or (
+            _PERSONAL_RECORD_CONTEXT_RE.search(folded) is not None
+            and _PERSONAL_RECORD_REGISTRY_RE.search(folded) is not None
+        )
+    )
 
 
 # ---- LLM turn-router seam ---------------------------------------------------
@@ -796,6 +839,16 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     fragment_meta = _fragment_meta_preflight(clean_question, last_handoff)
     if fragment_meta is not None:
         return fragment_meta
+
+    # ---- Personal-record capability boundary (deterministic, BEFORE router) ----
+    # Account actions and incidents retain their higher-priority handling.
+    if (_structured_rate_eligible(clean_question)
+            and _is_personal_record_request(clean_question)):
+        return Decision(
+            Outcome.ANSWER, PERSONAL_RECORD_CAPABILITY_MESSAGE,
+            question=clean_question, handoff=False,
+            reason=DecisionReason.PERSONAL_RECORD_CAPABILITY_BOUNDARY,
+        )
 
     # ---- Typed structured-rate seam (opt-in, BEFORE every LLM/vector call) ----
     # Account actions, active incidents, and ambiguous-card turns explicitly
