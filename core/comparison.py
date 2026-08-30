@@ -255,7 +255,7 @@ _CERTIFIABLE_COMPARISON_FORMS = (
 _CERTIFIABLE_BREADTH_FORMS = ("te gjitha",)
 _CERTIFIABLE_RESIDUE = _QUERY_STOPWORDS | frozenset({
     "bankat", "bankes", "banken", "cfar", "cfare", "cilen", "cilin", "cili",
-    "dua", "di", "do", "jane", "jo", "ju", "lutem", "ma", "mund", "nje",
+    "dua", "di", "do", "edhe", "jane", "jo", "ju", "lutem", "ma", "mund", "nje", "po",
     "nga", "nese", "prej", "qe", "rreth", "se", "tek", "trego", "tregoni", "thjesht", "tyre",
 })
 _COVERAGE_TOKEN_RE = re.compile(r"[^\W_]+|%", re.UNICODE)
@@ -516,9 +516,19 @@ def certify_semantic_coverage(
             consume_exact((alias,))
 
     if intent.term_months is not None:
+        consumed_term = False
         for match in _CERTIFIABLE_TERM_RE.finditer(folded_question):
             if int(match.group(1)) == intent.term_months:
                 consume_span(match.start(), match.end(), match.group(0))
+                consumed_term = True
+        # Bare numeric terms are admitted only when the caller-supplied intent
+        # already carries that exact term (the elliptical merge is the only
+        # parser path that creates such an intent).  This does not teach the
+        # ordinary parser to guess what an otherwise unexplained number means.
+        if not consumed_term:
+            for match in re.finditer(r"\b\d+\b", folded_question):
+                if int(match.group(0)) == intent.term_months:
+                    consume_span(match.start(), match.end(), match.group(0))
 
     unresolved = _deduplicated(tuple(
         token.group(0) for index, token in enumerate(tokens)
@@ -775,6 +785,97 @@ def _resolve_family(product_matches: list[Product], folded_question: str) -> str
         if any(_has_term(folded_question, term) for term in terms):
             return family
     return None
+
+
+_ELLIPTICAL_LEAD_RE = re.compile(
+    r"^\s*(?:po|edhe|e\s+per|po\s+per|po\s+te)(?:\b|\s)", re.I,
+)
+_SENTENCE_VERB_RE = re.compile(
+    r"\b(?:jane|eshte|ka|ofron|ofrojne|ofroni|ofrojme)\b", re.I,
+)
+_BARE_TERM_RE = re.compile(r"\b(\d+)\b")
+
+
+def _elliptical_slot_values(question: str) -> dict[str, object]:
+    """Extract only explicit closed-catalog slot values from a continuation."""
+    folded_question = fold(question)
+    product_matches = _matching_products(folded_question)
+    metric_matches = _matching_slots(folded_question, METRIC_TERMS)
+    banks, _spans = _named_banks(folded_question)
+    term_match = _CERTIFIABLE_TERM_RE.search(folded_question)
+    if term_match is None:
+        term_match = _BARE_TERM_RE.search(folded_question)
+
+    family = _resolve_family(product_matches, folded_question)
+    values: dict[str, object] = {}
+    if len(product_matches) == 1:
+        values["product"] = product_matches[0]
+        values["family"] = _FAMILY_OF.get(product_matches[0])
+    elif not product_matches and family is not None:
+        values["product"] = None
+        values["family"] = family
+    if len(metric_matches) == 1:
+        values["metric"] = metric_matches[0]
+    if banks:
+        values["banks"] = banks
+    if term_match is not None:
+        values["term_months"] = int(term_match.group(1))
+    return values
+
+
+def is_elliptical_rate_turn(question: str) -> bool:
+    """Return whether a turn has elliptical syntax plus an explicit rate slot."""
+    folded_question = fold(question)
+    has_bare_lead = _ELLIPTICAL_LEAD_RE.search(folded_question) is not None
+    bare_noun_phrase = (
+        _SENTENCE_VERB_RE.search(folded_question) is None
+        and not any(_has_term(folded_question, term) for term in _PRICE_TERMS)
+    )
+    return bool((has_bare_lead or bare_noun_phrase)
+                and _elliptical_slot_values(question))
+
+
+def merge_elliptical(question: str, frame: RateIntent) -> RateIntent | None:
+    """Merge explicit continuation slots into a preserved structured frame.
+
+    The ordinary hybrid parser must first reject the turn as ``not_rate``.
+    Every newly represented token is then certified against the merged frame;
+    inherited fields never turn an unrepresented qualifier into a wildcard.
+    """
+    if parse_rate_intent_hybrid(question).status != "not_rate":
+        return None
+    if not is_elliptical_rate_turn(question):
+        return None
+    values = _elliptical_slot_values(question)
+    updates: dict[str, object] = {}
+    wildcard_slots = set(frame.wildcard_slots)
+
+    if "product" in values:
+        updates["product"] = values["product"]
+        updates["family"] = values["family"]
+        wildcard_slots.discard("product")
+    if "metric" in values:
+        updates["metric"] = values["metric"]
+        wildcard_slots.discard("metric")
+    if "banks" in values:
+        updates["bank_scope"] = "named"
+        updates["banks"] = values["banks"]
+    if "term_months" in values:
+        updates["term_months"] = values["term_months"]
+
+    if not updates:
+        return None
+    updates["wildcard_slots"] = frozenset(wildcard_slots)
+    leaf = bool(
+        updates.get("term_months", frame.term_months) is not None
+        or frame.fee_event or frame.value_type or frame.amount_band
+    )
+    updates["breadth"] = "leaf" if leaf else "product_metric"
+    merged = frame._replace(**updates)
+    coverage = certify_semantic_coverage(question, merged)
+    if coverage.status is not StructuredIntentStatus.FULL_STRUCTURED_INTENT:
+        return None
+    return merged
 
 
 # Catalog declines only when answering would require guessing which bank or

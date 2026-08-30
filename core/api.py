@@ -19,8 +19,10 @@ from pydantic import BaseModel, Field, field_validator
 from .rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
 from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, DecisionReason,
-                        Outcome, decide, is_ambiguous_card_maintenance,
-                        next_structured_frame, sessions)
+                        Outcome, _structured_rate_decision, decide,
+                        is_ambiguous_card_maintenance, next_structured_frame,
+                        sessions)
+from .comparison import is_elliptical_rate_turn
 from .retrieve import embedding_stats
 from .retrieve import open_pool as open_retrieval_pool
 from .retrieve import shutdown as shutdown_retrieval
@@ -561,6 +563,15 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 rewrite_used = needs_rewrite(decision.question, session.history)
                 standalone_query = rewrite(decision.question, session.history) \
                                    if rewrite_used else decision.question
+        if (rate_intent is None
+                and (rewrite_used or is_elliptical_rate_turn(decision.question))):
+            reparsed = _structured_rate_decision(standalone_query)
+            if reparsed is not None:
+                decision = reparsed
+                session.last_structured_frame = next_structured_frame(
+                    decision, getattr(session, "last_structured_frame", None),
+                )
+                rate_intent = decision.rate_intent
         yield emit({"type": "tool", "query": standalone_query})
         if rate_intent is None and is_ambiguous_card_maintenance(standalone_query):
             sessions.record(

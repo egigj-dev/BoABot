@@ -673,15 +673,25 @@ def _structured_rate_eligible(question: str) -> bool:
     )
 
 
-def _structured_rate_decision(question: str) -> Decision | None:
+def _structured_rate_decision(
+        question: str, *, frame: RateIntent | None = None) -> Decision | None:
     """Injectable pre-LLM seam for exact closed-catalog rate requests."""
-    if not _structured_rate_enabled():
+    if not _structured_rate_enabled() or not _structured_rate_eligible(question):
         return None
     from .comparison import (CATALOG_DECLINE_REASONS, _source_bank_labels,
-                             parse_rate_intent_hybrid)
+                             merge_elliptical, parse_rate_intent_hybrid,
+                             resolve_rate_rows)
 
     parsed = parse_rate_intent_hybrid(question)
     if parsed.status == "not_rate":
+        if frame is not None:
+            merged = merge_elliptical(question, frame)
+            if merged is not None and resolve_rate_rows(merged):
+                return Decision(
+                    None, question=question,
+                    reason=DecisionReason.CATALOG_EXACT_HIT,
+                    rate_intent=merged,
+                )
         return None
     if parsed.status == "unsupported":
         if parsed.reason not in CATALOG_DECLINE_REASONS:
@@ -791,7 +801,9 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     # Account actions, active incidents, and ambiguous-card turns explicitly
     # cede to their existing higher-priority routing/backstop paths.
     if _structured_rate_enabled() and _structured_rate_eligible(clean_question):
-        structured = _structured_rate_decision(clean_question)
+        structured = _structured_rate_decision(
+            clean_question, frame=last_structured_frame,
+        )
         if structured is not None:
             return structured
 
