@@ -82,6 +82,38 @@ def test_decide_merges_elliptical_slots(
     assert comparison.resolve_rate_rows(decision.rate_intent)
 
 
+def test_all_bank_frame_clears_bank_filter_for_bankless_credit_listing(
+        router_off) -> None:
+    frame = _frame("cilat jane normat e interesit per depozita?")
+
+    decision = callcenter.decide(
+        "po per kredi?", "", [], last_structured_frame=frame,
+    )
+
+    assert decision.reason is callcenter.DecisionReason.CATALOG_EXACT_HIT
+    assert decision.rate_intent is not None
+    assert decision.rate_intent.family == "credit"
+    assert decision.rate_intent.metric == "interest_rate"
+    assert decision.rate_intent.bank_scope == "all"
+    assert decision.rate_intent.banks == ()
+    hits = comparison.structured_rate_hits(decision.rate_intent)
+    answer = comparison.render_rate_answer(decision.rate_intent, hits)
+    assert hits
+    assert "KREDI PER SHTEPI/PRONA" in answer
+
+
+def test_named_bank_frame_does_not_clear_bank_filter_for_bankless_credit_rows(
+        router_off) -> None:
+    frame = _frame("normat e interesit per depozita Credins 12 muaj?")
+
+    decision = callcenter.decide(
+        "po per kredi?", "", [], last_structured_frame=frame,
+    )
+
+    assert decision.reason is callcenter.DecisionReason.DENSE_RETRIEVAL
+    assert decision.rate_intent is None
+
+
 def test_smalltalk_preserves_frame_then_bank_replaces(router_off, monkeypatch) -> None:
     frame = _frame("normat e depozitave?")
     monkeypatch.setattr(

@@ -788,7 +788,20 @@ def _structured_rate_decision(
     if parsed.status == "not_rate":
         if frame is not None:
             merged = merge_elliptical(question, frame)
-            if merged is not None and resolve_rate_rows(merged):
+            merged_rows = resolve_rate_rows(merged) if merged is not None else []
+            if merged is not None and frame.bank_scope == "all":
+                cleared = merged._replace(bank_scope="all", banks=())
+                cleared_rows = resolve_rate_rows(cleared)
+                # Commit 5.1 admits family listings whose rows carry product
+                # labels rather than banks. Treat those empty _bank_lines as
+                # the same failed bank-scoped resolution this fallback fixes.
+                bank_scoped_rows = any(
+                    row.get("_bank_lines") for row in merged_rows
+                )
+                if cleared_rows and (not merged_rows or not bank_scoped_rows):
+                    merged = cleared
+                    merged_rows = cleared_rows
+            if merged is not None and merged_rows:
                 return Decision(
                     None, question=question,
                     reason=DecisionReason.CATALOG_EXACT_HIT,
