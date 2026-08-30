@@ -11,8 +11,11 @@ from core.text_norm import fold_ws
 
 CURRENCY_RE = r"(?:ALL|EUR|USD|lek(?:ë|e)?|euro|dollar(?:ë|e)?)"
 NUMBER_RE = r"\d{1,3}(?:[ .'’]\d{3})+(?:[,.]\d+)?|\d+(?:[,.]\d+)?"
+# NB: "përqind" is the standard one-word Albanian spelling; "për qind" also
+# occurs. \s? accepts both; \b keeps "përqindje" (percentage, a noun) from
+# half-matching the unit.
 VALUE_RE = re.compile(
-    rf"(?P<value>{NUMBER_RE})\s*(?P<unit>%|p[eë]r\s+qind|{CURRENCY_RE})?",
+    rf"(?P<value>{NUMBER_RE})\s*(?P<unit>%|p[eë]r\s?qind\b|{CURRENCY_RE})?",
     re.IGNORECASE,
 )
 # NB: the token class deliberately EXCLUDES '.' — bank names never contain

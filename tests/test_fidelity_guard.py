@@ -102,3 +102,36 @@ def test_prose_claim_against_chunk_still_bound() -> None:
     )
     verdict = GUARD.verify_sources(sentence, evidence([prose]))
     assert not verdict.approved
+
+
+# ---- one-word "përqind" unit (live-generated form, 2026-08-30) ---------------
+# The generator writes "2.00 përqind" (standard Albanian single-word spelling).
+# The unit regex must consume it, otherwise "perqind" lands in the claim label
+# and fails the chunk-vocabulary subset -> whole answer soft-dropped -> EMPTY.
+LIVE_FAILING_SENTENCE = (
+    "Sipas tabelave të publikuara, Banka Union aplikon një komision prej 2.00 përqind "
+    "për tërheqje cash me kartë debiti nga terminalet e bankave të tjera."
+)
+
+
+def test_one_word_perqind_unit_approves() -> None:
+    verdict = GUARD.verify_sources(LIVE_FAILING_SENTENCE, evidence([CASH_TABLE]))
+    assert verdict.approved, verdict.reason
+
+
+def test_one_word_perqind_wrong_figure_dropped() -> None:
+    sentence = LIVE_FAILING_SENTENCE.replace("2.00", "99.99")
+    verdict = GUARD.verify_sources(sentence, evidence([CASH_TABLE]))
+    assert not verdict.approved
+
+
+def test_minimum_amount_sentence_ungrounded_figure_dropped() -> None:
+    # Live generator's second sentence: 350.00 is NOT in this evidence -> the
+    # soft-fail must drop it while the first (grounded) sentence survives.
+    sentence = (
+        "Për të njëjtin shërbim, Banka Union aplikon një komision minimal "
+        "në shumën 350.00."
+    )
+    verdict = GUARD.verify_sources(sentence, evidence([CASH_TABLE]))
+    assert not verdict.approved
+    assert "mismatch" in verdict.reason
