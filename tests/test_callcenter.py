@@ -3,6 +3,7 @@
 import re
 
 import numpy as np
+import pytest
 
 import core.callcenter as callcenter
 from core.callcenter import DecisionReason, Outcome, decide
@@ -66,3 +67,36 @@ def test_repeat_preserves_a_pending_transfer_flag() -> None:
 def test_repeat_word_requires_a_word_boundary() -> None:
     assert not callcenter._is_repeat("repeatedly")
     assert callcenter._is_repeat("repeat")
+
+
+@pytest.mark.parametrize(
+    ("question", "reason", "handoff"),
+    (
+        (
+            "OTP qe me derguat eshte 99120",
+            DecisionReason.CREDENTIAL_DISCLOSURE,
+            True,
+        ),
+        (
+            "OTP që më dërguat është 99120",
+            DecisionReason.CREDENTIAL_DISCLOSURE,
+            True,
+        ),
+        (
+            "sa eshte komisioni i dergimit te parave?",
+            DecisionReason.DENSE_RETRIEVAL,
+            False,
+        ),
+    ),
+)
+def test_credential_fast_path_send_verb_floor(
+        monkeypatch, question, reason, handoff) -> None:
+    monkeypatch.setattr(callcenter, "_analyze_turn", lambda *_a, **_k: None)
+    monkeypatch.setattr(callcenter, "_classify_turn", lambda *_a, **_k: "answer")
+    monkeypatch.setattr(callcenter, "_encode_question", lambda _q: np.zeros(1))
+    monkeypatch.setattr(callcenter, "_probe_score", lambda _e: None)
+    monkeypatch.setattr(callcenter, "_account_action_score", lambda _e: None)
+
+    decision = decide(question, "", [])
+    assert decision.reason is reason
+    assert decision.handoff is handoff

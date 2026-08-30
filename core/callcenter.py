@@ -206,8 +206,8 @@ sessions = SessionStore()
 # Fast-path only credential disclosures or active access incidents; general PIN/CVV questions use semantic routing.
 _SECRET_FAST_RE = re.compile(
     r"(?:\b(?:pin|cvv|cvc|otp)\b.{0,80}\b(?:zbulu|kompromet|vjedh|dha|ndava|tregova|"
-    r"kerk|doli|nuk funksion)|\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|tregova|kerk|doli|"
-    r"nuk funksion).{0,80}\b(?:pin|cvv|cvc|otp)\b)", re.I)
+    r"derg\w*|dërg\w*|kerk|doli|nuk funksion)|\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|"
+    r"tregova|derg\w*|dërg\w*|kerk|doli|nuk funksion).{0,80}\b(?:pin|cvv|cvc|otp)\b)", re.I)
 
 # Frozen grouped-train nearest-neighbour classifier; serving needs NumPy only.
 _PROBE_PATH = Path(__file__).resolve().parents[1] / "handoff_probe.json"
