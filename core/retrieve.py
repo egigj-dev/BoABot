@@ -13,7 +13,9 @@ from sentence_transformers import SentenceTransformer
 DSN = os.environ.get("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 LIVE = ("canonical", "base")          # excludes amendment + superseded
-CUSTOMER_SCOPES = ("public",)   # allowlist: unclassified never reaches a caller
+PUBLIC_VISIBILITY = ("public",)  # retrievable = visibility IN ('public'); restricted never reaches a caller
+# doc_scope is DEPRECATED (2026-08-30 taxonomy split: visibility x document_type);
+# kept populated for back-compat. The retrieval contract is visibility-based.
 _model = None
 _pool = ConnectionPool(DSN, min_size=1, max_size=4, open=False, name="retrieval")
 _pool_lock = threading.Lock()
@@ -76,7 +78,7 @@ def shutdown():
 
 def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None,
              embedded_query: str | None = None, mode: str = "dense",
-             scopes=CUSTOMER_SCOPES):
+             visibilities=PUBLIC_VISIBILITY):
     """Top-k dense or RRF-hybrid chunks.
 
     ``dense`` is the unchanged production path. ``hybrid`` is opt-in and returns
@@ -98,11 +100,11 @@ def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None,
     vs = "[" + ",".join(f"{x:.6f}" for x in v) + "]"
     sql = """SELECT id, doc, article, url, text,
                     1 - (embedding <=> %s::vector) AS dense_score
-             FROM chunks WHERE status = ANY(%s) AND doc_scope = ANY(%s)
+             FROM chunks WHERE status = ANY(%s) AND visibility = ANY(%s)
              ORDER BY embedding <=> %s::vector LIMIT %s"""
     if mode == "dense":
         with pool().connection() as conn, conn.cursor() as cur:
-            cur.execute(sql, (vs, list(statuses), list(scopes), vs, k))
+            cur.execute(sql, (vs, list(statuses), list(visibilities), vs, k))
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -121,14 +123,14 @@ def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None,
                      SELECT id, doc, article, url, text,
                             ts_rank_cd(text_search, query.terms) AS lexical_score
                      FROM chunks, query
-                     WHERE status = ANY(%s) AND doc_scope = ANY(%s)
+                     WHERE status = ANY(%s) AND visibility = ANY(%s)
                            AND text_search @@ query.terms
                      ORDER BY lexical_score DESC, id ASC LIMIT %s"""
     with pool().connection() as conn, conn.cursor() as cur:
-        cur.execute(sql, (vs, list(statuses), list(scopes), vs, k))
+        cur.execute(sql, (vs, list(statuses), list(visibilities), vs, k))
         cols = [d[0] for d in cur.description]
         dense_hits = [dict(zip(cols, r)) for r in cur.fetchall()]
-        cur.execute(lexical_sql, (query, list(statuses), list(scopes), k))
+        cur.execute(lexical_sql, (query, list(statuses), list(visibilities), k))
         cols = [d[0] for d in cur.description]
         lexical_hits = [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -167,32 +169,32 @@ def retrieve(query: str, k: int = 5, statuses=LIVE, query_embedding=None,
     )[:k]
 
 
-def fetch_chunks_by_ids(chunk_ids, statuses=LIVE, scopes=CUSTOMER_SCOPES):
+def fetch_chunks_by_ids(chunk_ids, statuses=LIVE, visibilities=PUBLIC_VISIBILITY):
     """Fetch known chunk IDs without a second embedding call."""
     ids = tuple(dict.fromkeys(str(chunk_id) for chunk_id in chunk_ids if chunk_id))
     if not ids:
         return []
     sql = """SELECT id, doc, article, url, text
-             FROM chunks WHERE status = ANY(%s) AND doc_scope = ANY(%s)
+             FROM chunks WHERE status = ANY(%s) AND visibility = ANY(%s)
              AND id = ANY(%s)"""
     with pool().connection() as conn, conn.cursor() as cur:
-        cur.execute(sql, (list(statuses), list(scopes), list(ids)))
+        cur.execute(sql, (list(statuses), list(visibilities), list(ids)))
         cols = [description[0] for description in cur.description]
         by_id = {row[0]: dict(zip(cols, row)) for row in cur.fetchall()}
     return [by_id[chunk_id] for chunk_id in ids if chunk_id in by_id]
 
 
 def fetch_doc_article(doc_fragment: str, article: str, statuses=LIVE,
-                      scopes=CUSTOMER_SCOPES):
+                      visibilities=PUBLIC_VISIBILITY):
     """Resolve an explicit document/article reference from chunk metadata."""
     sql = """SELECT id, doc, article, url, text
              FROM chunks
-             WHERE status = ANY(%s) AND doc_scope = ANY(%s)
+             WHERE status = ANY(%s) AND visibility = ANY(%s)
                    AND doc ILIKE %s AND article = %s
              ORDER BY id"""
     with pool().connection() as conn, conn.cursor() as cur:
         cur.execute(sql, (
-            list(statuses), list(scopes), f"%{doc_fragment}%", str(article),
+            list(statuses), list(visibilities), f"%{doc_fragment}%", str(article),
         ))
         cols = [description[0] for description in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
