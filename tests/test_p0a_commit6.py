@@ -63,7 +63,7 @@ def test_contextual_personal_record_forms_require_registry_vocabulary(
     ("question", "expected_reason"),
     (
         ("a duhet ta paguaj kete kredi?", DecisionReason.LEGAL_ADVICE_EXPLICIT),
-        ("nuk kam kredi.", DecisionReason.DENSE_RETRIEVAL),
+        ("nuk kam kredi.", DecisionReason.NEGATION_STATEMENT),
         ("cfare thote rregullorja per mua si garant?", DecisionReason.DENSE_RETRIEVAL),
         ("a mund te marr nje kredi?", DecisionReason.DENSE_RETRIEVAL),
         ("mbyll llogarine ne emrin tim", DecisionReason.SEMANTIC_ACCOUNT_ACTION),

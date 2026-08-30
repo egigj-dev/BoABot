@@ -60,6 +60,33 @@ def test_router_account_action_without_lexical_vocabulary_does_not_escalate(monk
     assert decision.reason is DecisionReason.SEMANTIC_ACCOUNT_ACTION
 
 
+def test_credit_negation_statement_is_dialog_filler() -> None:
+    decision = decide("nuk kam kredi.", "", [])
+
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.reason is DecisionReason.NEGATION_STATEMENT
+    assert not decision.handoff
+
+
+@pytest.mark.parametrize(
+    "question",
+    ("a nuk kam kredi?", "a nuk kam kredi aktive?", "nuk kam kredi, apo jo?"),
+)
+def test_credit_negation_questions_reach_personal_record_boundary(question) -> None:
+    decision = decide(question, "", [])
+
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.reason is DecisionReason.PERSONAL_RECORD_CAPABILITY_BOUNDARY
+    assert not decision.handoff
+
+
+def test_account_negation_statement_is_unchanged() -> None:
+    decision = decide("nuk kam llogari", "", [])
+
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.reason is DecisionReason.NEGATION_STATEMENT
+
+
 def test_router_clarify_uses_generic_not_card_message(monkeypatch) -> None:
     # A general "clarify" label must ask the user to restate generically — it
     # must NOT trigger the card-debit/credit script (that stays on the lexical

@@ -458,13 +458,21 @@ def _is_legal_advice_explicit(text: str) -> bool:
 # words), so they deterministically fall through to a continue-helping
 # response before the router or the incident probe can see them.
 _NEGATION_STATEMENT_RE = re.compile(
-    r"\bnuk\s+kam\s+(?:asnjë\s+)?(?:kart\w*|llogari\w*|pyetje(?:s)?)\b",
+    r"\bnuk\s+kam\s+(?:asnjë\s+)?(?:kart\w*|llogari\w*|pyetje(?:s)?|kredi\w*)\b",
+    re.I,
+)
+_CREDIT_NEGATION_INTERROGATIVE_RE = re.compile(
+    r"(?:^|[?!.]\s*)a\s+nuk\s+kam\s+(?:asnje\s+)?kredi\w*\b|"
+    r"\bnuk\s+kam\s+(?:asnje\s+)?kredi\w*\b.{0,40}\bapo\s+jo\b",
     re.I,
 )
 
 
 def _is_negation_statement(text: str) -> bool:
-    return _NEGATION_STATEMENT_RE.search(fold(text)) is not None
+    folded = fold(text)
+    if _CREDIT_NEGATION_INTERROGATIVE_RE.search(folded):
+        return False
+    return _NEGATION_STATEMENT_RE.search(folded) is not None
 
 
 # ---- Personal Credit Registry record capability boundary ------------------
