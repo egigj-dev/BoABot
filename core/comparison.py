@@ -1300,8 +1300,10 @@ def structured_rate_hits(intent: RateIntent, k: int = 5) -> list[dict]:
     for row in resolve_rate_rows(intent):
         slots: RowSlots = row["_row_slots"]
         bank_lines = row["_bank_lines"]
-        header = str(row.get("text") or "").splitlines()[0]
-        text = "\n".join((header, *bank_lines))
+        source_lines = str(row.get("text") or "").splitlines()
+        header = source_lines[0]
+        value_lines = bank_lines or tuple(source_lines[1:])
+        text = "\n".join((header, *value_lines))
         hit_id = str(row["_id"])
         hits.append({
             "id": hit_id,
@@ -1371,6 +1373,7 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
     if intent.availability:
         return render_availability_answer(intent)
     lines_by_bank: dict[str, list[str]] = {bank: [] for bank in intent.banks}
+    product_lines: list[str] = []
     for hit in hits:
         article = str(hit.get("article") or "")
         for line in str(hit.get("text") or "").splitlines()[1:]:
@@ -1379,15 +1382,17 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
                 continue
             bank = match.group(1).strip()
             canonical = next((name for name in intent.banks if fold(name) == fold(bank)), None)
-            if canonical is None:
-                continue
             value = line[match.end(1) + 1:].strip()
+            if canonical is None:
+                product_lines.append(f"- {article}: {value}")
+                continue
             lines_by_bank[canonical].append(f"- {article}: {value}")
     rendered: list[str] = []
     for bank in intent.banks:
         items = lines_by_bank.get(bank) or []
         if items:
             rendered.extend((f"{bank}:", *items))
+    rendered.extend(product_lines)
     return "\n".join(rendered)
 
 

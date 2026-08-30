@@ -1,5 +1,7 @@
 """P0A commit 3: explicit breadth, row dimensions, and ranking safety."""
 
+import hashlib
+
 import pytest
 
 import core.callcenter as callcenter
@@ -210,6 +212,46 @@ def test_bare_credit_family_listing_is_bounded_and_full() -> None:
     rows = comparison.resolve_rate_rows(parsed.intent)
     assert rows
     assert {row["_row_slots"].product for row in rows} <= comparison.PRODUCT_FAMILY["credit"]
+
+
+def test_bare_credit_family_listing_renders_product_rows() -> None:
+    parsed = comparison.parse_rate_intent(
+        "cilat jane normat e interesit per kredi?"
+    )
+    assert parsed.status == "resolved"
+    assert parsed.intent is not None
+
+    rendered = comparison.render_rate_answer(
+        parsed.intent, comparison.structured_rate_hits(parsed.intent),
+    )
+
+    assert rendered
+    assert "KREDI PER SHTEPI/PRONA — maturitet 0-12 muaj: 4.90" in rendered
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_sha256"),
+    (
+        (
+            "krahaso BKT, Credins dhe OTP per komisione",
+            "0e48df6d9aa8ab663341900d5027af88d09d4505e56a4a24ff7ace69fce6eac8",
+        ),
+        (
+            "Cilat jane normat per depozit 12-mujore te Banka Intesa SanPaolo?",
+            "c8b8097b79e5ba88cb72ce7c815b3990704d9ddf142eefd45cec167d248fc664",
+        ),
+    ),
+)
+def test_banked_rendering_is_byte_identical(question, expected_sha256) -> None:
+    parsed = comparison.parse_rate_intent(question)
+    assert parsed.status == "resolved"
+    assert parsed.intent is not None
+
+    rendered = comparison.render_rate_answer(
+        parsed.intent, comparison.structured_rate_hits(parsed.intent),
+    )
+
+    assert hashlib.sha256(rendered.encode()).hexdigest() == expected_sha256
 
 
 def test_bare_card_family_listing_is_bounded() -> None:
