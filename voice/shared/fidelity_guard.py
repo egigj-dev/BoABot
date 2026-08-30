@@ -62,6 +62,8 @@ LABEL_TOKEN_FORMS = {
     "depozites": "depozita",
     "biznese": "biznes",
     "biznesi": "biznes",
+    "biznesin": "biznes",
+    "biznesit": "biznes",
     "bizneseve": "biznes",
     "bizneset": "biznes",
     "banka": "bank",
@@ -233,6 +235,19 @@ class FidelityGuard:
         for line_index, line in enumerate(lines[content_start:], content_start):
             matches = tuple(VALUE_RE.finditer(line))
             for match in matches:
+                # A GLUED hyphen makes the number part of a range or compound
+                # term ("13-24 muaj", "12-mujore"), not a standalone claimable
+                # value. Skipping the range endpoints stops maturity bands from
+                # being verified as if they were rates (they can never match an
+                # evidence value, so every band-bearing sentence dropped).
+                # The corpus has NO decimal value ranges (\d.\d+-\d: 0 rows),
+                # so genuine rate values never carry a glued hyphen.
+                end, start = match.end(), match.start()
+                if end < len(line) and line[end] == "-":
+                    continue
+                if (start >= 2 and line[start - 1] == "-"
+                        and line[start - 2].isdigit()):
+                    continue
                 try:
                     value = _number(match.group("value"))
                 except InvalidOperation:

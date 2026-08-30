@@ -135,3 +135,56 @@ def test_minimum_amount_sentence_ungrounded_figure_dropped() -> None:
     verdict = GUARD.verify_sources(sentence, evidence([CASH_TABLE]))
     assert not verdict.approved
     assert "mismatch" in verdict.reason
+
+
+# ---- maturity bands / compound terms are NOT numeric claims (2026-08-30) ----
+# Live generator writes "maturitet 13-24 muaj" in the same sentence as the
+# rate; the old extractor claimed 13 and 24 as VALUES (they can never match an
+# evidence value) -> every band-bearing sentence dropped -> EMPTY_ANSWER.
+BIZNES_TABLE = (
+    "Normat nominale dhe NEI për bizneset\n"
+    "Biznes i vogel — maturitet 13-24 muaj\n"
+    "Biznes i vogel: 8.00\n"
+    "Biznes i vogel: 9.00\n"
+)
+BAND_SENTENCE = (
+    "Sipas tabelave, për biznesin e vogël me maturitet 13-24 muaj, "
+    "norma nominale është 8.00."
+)
+
+
+def test_maturity_band_range_is_not_a_claim() -> None:
+    claims = [c for c in GUARD.extract_claims(BAND_SENTENCE)]
+    assert [float(c.value) for c in claims] == [8.00]
+
+
+def test_maturity_band_sentence_approves() -> None:
+    verdict = GUARD.verify_sources(BAND_SENTENCE, evidence([BIZNES_TABLE]))
+    assert verdict.approved, verdict.reason
+
+
+DEPOSIT_TABLE = (
+    "Depozita ne Leke\n"
+    "Norma e interesit — afat 12-mujore\n"
+    "Banka Union: 3.00\n"
+)
+MONTH_TERM_SENTENCE = (
+    "Norma për depozita 12-mujore është 3.00 në Banka Union."
+)
+
+
+def test_month_compound_term_is_not_a_claim() -> None:
+    claims = [c for c in GUARD.extract_claims(MONTH_TERM_SENTENCE)]
+    assert [float(c.value) for c in claims] == [3.00]
+
+
+def test_month_compound_term_sentence_approves() -> None:
+    verdict = GUARD.verify_sources(MONTH_TERM_SENTENCE, evidence([DEPOSIT_TABLE]))
+    assert verdict.approved, verdict.reason
+
+
+def test_wrong_band_value_still_dropped() -> None:
+    # Value 7.50 absent from every band row -> drop, even with a valid band.
+    sentence = BAND_SENTENCE.replace("8.00", "7.50")
+    verdict = GUARD.verify_sources(sentence, evidence([BIZNES_TABLE]))
+    assert not verdict.approved
