@@ -108,32 +108,37 @@ class RowSlots(NamedTuple):
 # Bounded Albanian vocabularies: these are catalog slots, not semantic prompts.
 PRODUCT_TERMS = {
     "consumer_credit_unsecured": (
-        ("kredi", "kredia", "kredie", "kredise", "kredive"),
-        ("konsumator", "konsumatore", "konsumtare", "pasiguruar"),
+        ("kredi", "kredia", "kredie", "kredine", "kredise", "kredive"),
+        ("konsumator", "konsumatore", "konsumtare", "pasiguruar", "pasiguruara"),
     ),
     "consumer_credit_mortgage": (
-        ("kredi", "kredia", "kredie", "kredise", "kredive"),
+        ("kredi", "kredia", "kredie", "kredine", "kredise", "kredive"),
         ("konsumator", "konsumatore"), ("hipotek", "hipoteke", "hipotekes"),
     ),
     "housing_credit": (
-        ("kredi", "kredia", "kredie", "kredise", "kredive"),
+        ("kredi", "kredia", "kredie", "kredine", "kredise", "kredive"),
         ("shtepi", "prona", "hipotekare"),
     ),
-    "deposit": (("depozit", "depozite", "depozita", "depozites", "depozitave"),),
+    "deposit": ((
+        "depozit", "depozite", "depozita", "depoziten", "depozites",
+        "depozitat", "depozitave",
+    ),),
     "debit_card": (
-        ("kart", "karte", "karta", "kartes"),
+        ("kart", "karte", "karta", "karten", "kartes", "kartat", "kartave"),
         ("debit", "debiti", "debitit"),
     ),
     "credit_card": (("kart", "karte", "karta", "kartes"), ("kredit", "krediti")),
 }
 METRIC_TERMS = {
     "interest_rate": (
-        "interes", "interesi", "interesit", "norme", "norma", "normat",
+        "interes", "interesi", "interesit", "norme", "norma", "normen",
+        "normat", "normave",
         "nei", "nominale",
     ),
     "fee": (
-        "tarif", "tarifa", "tarifat", "tarifes",
+        "tarif", "tarifa", "tarifen", "tarifat", "tarifes", "tarifave",
         "komision", "komisioni", "komisionit", "komisione", "komisionet",
+        "komisioneve",
         "kosto", "kostos",
     ),
     "penalty": ("penalitet", "penalizues", "vonuar"),
@@ -143,7 +148,10 @@ FEE_EVENT_TERMS = {
     "application": ("aplikim", "aplikimi", "aplikimit"),
     "disbursement": ("disbursim", "disbursimi", "disbursimit"),
     "maintenance": ("mirembajtje", "sherbim"),
-    "early_repayment": ("shlyerje parakohshme", "parakoheshme"),
+    "early_repayment": (
+        "shlyerje parakohshme", "shlyerje te parakohshme",
+        "shlyerje e parakohshme", "parakohshme", "parakoheshme",
+    ),
     "late_payment": ("shlyerje vonuar", "kestit", "vones"),
     "issuance": ("leshim", "leshimi", "leshimit"),
     "cash_withdrawal": ("terheqje", "cash", "terminal"),
@@ -212,11 +220,13 @@ _CERTIFIABLE_COMPARISON_FORMS = (
 _CERTIFIABLE_RESIDUE = _QUERY_STOPWORDS | frozenset({
     "bankat", "bankes", "banken", "cfar", "cfare", "cilen", "cilin", "cili",
     "dua", "di", "do", "jane", "jo", "ju", "lutem", "ma", "mund", "nje",
-    "nga", "nese", "prej", "qe", "rreth", "se", "trego", "tregoni", "thjesht", "tyre",
+    "nga", "nese", "prej", "qe", "rreth", "se", "tek", "trego", "tregoni", "thjesht", "tyre",
 })
 _COVERAGE_TOKEN_RE = re.compile(r"[^\W_]+|%", re.UNICODE)
 _CERTIFIABLE_TERM_RE = re.compile(
-    r"(?:\b(?:afat|maturitet)\s+)?\b(\d+)\s+(?:muaj|muajsh|muajve)\b"
+    r"(?:\b(?:afat|maturitet)\s+)?\b(\d+)"
+    r"(?:\s+(?:muaj|muajsh|muajve|mujore?s?|muajshe)"
+    r"|\s*-\s*(?:mujore?s?|muajsh))\b"
 )
 
 
@@ -536,7 +546,7 @@ def _row_slots(row: dict) -> RowSlots:
 
     term_months = None
     range_match = re.search(r"(\d+)\s*-\s*(\d+)\s+muaj", item)
-    term_match = re.search(r"(?:afat|maturitet)\s+(\d+)\s+muaj", item)
+    term_match = _CERTIFIABLE_TERM_RE.search(item)
     if range_match:
         term_months = int(range_match.group(2))
     elif term_match:
@@ -912,7 +922,7 @@ def parse_rate_intent(question: str) -> RateParse:
         return RateParse("unsupported", None, "conflicting_slots")
 
     term_months = None
-    term_match = re.search(r"(?:afat|maturitet)?\s*(\d+)\s+muaj", folded_question)
+    term_match = _CERTIFIABLE_TERM_RE.search(folded_question)
     if term_match:
         term_months = int(term_match.group(1))
     amount_band = None

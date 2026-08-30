@@ -181,3 +181,52 @@ def test_unrelated_broad_deposit_output_is_unchanged() -> None:
     assert parsed.coverage is not None
     assert parsed.coverage.status is comparison.StructuredIntentStatus.FULL_STRUCTURED_INTENT
     assert len(comparison.resolve_rate_rows(parsed.intent)) == 15
+
+
+@pytest.mark.parametrize(
+    ("question", "product", "family", "term_months"),
+    (
+        (
+            "Cilat jane tarifat e kartave te debitit?",
+            "debit_card", None, None,
+        ),
+        ("a ofron Credins kredine?", None, "credit", None),
+        (
+            "Sa eshte interesi per depozit me afat 3 muajshe ne Banka Tirana?",
+            "deposit", None, 3,
+        ),
+        (
+            "Cilat jane normat per depozit 12-mujore te Banka Intesa SanPaolo?",
+            "deposit", None, 12,
+        ),
+    ),
+)
+def test_new_slot_inflections_are_full_coverage(
+        question, product, family, term_months) -> None:
+    parsed = comparison.parse_rate_intent_hybrid(question)
+    assert parsed.status == "resolved"
+    assert parsed.reason == ""
+    assert parsed.intent is not None
+    assert parsed.intent.product == product
+    assert parsed.intent.family == family
+    assert parsed.intent.term_months == term_months
+    assert parsed.coverage is not None
+    assert parsed.coverage.status is comparison.StructuredIntentStatus.FULL_STRUCTURED_INTENT
+    assert parsed.coverage.unresolved_qualifiers == ()
+
+
+def test_early_repayment_inflections_are_full_coverage() -> None:
+    question = (
+        "Per shlyerje te parakohshme te kredise konsumatore te pasiguruara, "
+        "sa eshte komisioni minimal tek Banka Procredit?"
+    )
+    parsed = comparison.parse_rate_intent_hybrid(question)
+    assert parsed.status == "resolved"
+    assert parsed.reason == ""
+    assert parsed.intent is not None
+    assert parsed.intent.product == "consumer_credit_unsecured"
+    assert parsed.intent.fee_event == "early_repayment"
+    assert parsed.intent.value_type == "min"
+    assert parsed.coverage is not None
+    assert parsed.coverage.status is comparison.StructuredIntentStatus.FULL_STRUCTURED_INTENT
+    assert parsed.coverage.unresolved_qualifiers == ()
