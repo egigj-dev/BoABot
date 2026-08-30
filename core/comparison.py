@@ -45,6 +45,8 @@ Product: TypeAlias = Literal[
     "housing_credit", "deposit", "debit_card", "credit_card",
 ]
 Metric: TypeAlias = Literal["interest_rate", "fee", "penalty"]
+BusinessSize: TypeAlias = Literal["small", "medium", "large"]
+RateComponent: TypeAlias = Literal["nominal_rate", "nei"]
 T = TypeVar("T")
 
 
@@ -94,12 +96,18 @@ class RateIntent(NamedTuple):
     currency: Literal["ALL", "EUR", "USD"] | None = None
     customer_segment: Literal["individual", "business"] | None = None
     wildcard_slots: frozenset[str] = frozenset()
+    # Business-rate family (the BoA "Normat nominale dhe NEI për bizneset"
+    # table) — a rate-table family, NOT a banking product.
+    business_size: BusinessSize | None = None
+    rate_component: RateComponent | None = None
+    maturity_band: tuple[int, int] | None = None
 
 
 def _rate_intent_asdict(intent: RateIntent) -> dict:
     """Keep legacy serialized intents stable while exposing populated new slots."""
     values = dict(zip(intent._fields, intent))
-    for key in ("currency", "customer_segment"):
+    for key in ("currency", "customer_segment", "business_size",
+                "rate_component", "maturity_band"):
         if values[key] is None:
             values.pop(key)
     if not values["wildcard_slots"]:
@@ -116,7 +124,7 @@ class RateParse(NamedTuple):
     reason: Literal[
         "unknown_bank", "missing_product", "conflicting_slots",
         "missing_key", "unrepresented_semantics",
-        "comparison_dimensions_missing", "",
+        "comparison_dimensions_missing", "maturity_band_required", "",
     ]
     coverage: CoverageCertification | None = None
 
@@ -128,6 +136,9 @@ class RowSlots(NamedTuple):
     value_type: Literal["min", "percent", "max", "value"] | None
     term_months: int | None
     amount_band: Literal["minimum", "maximum"] | None
+    business_size: BusinessSize | None = None
+    rate_component: RateComponent | None = None
+    maturity_band: tuple[int, int] | None = None
 
 
 # Bounded Albanian vocabularies: these are catalog slots, not semantic prompts.
@@ -177,6 +188,33 @@ CUSTOMER_SEGMENT_TERMS = {
     "individual": ("individ", "individe", "personal", "person fizik"),
     "business": ("biznes", "biznese", "kompani", "shoqeri", "person juridik"),
 }
+# Business-rate family vocabulary. The size term is a table-category slot
+# (Biznes i vogel / i mesem / i madh), NOT a banking product; "mesatar" is the
+# AMBIGUOUS-band trigger (rule 2: CLARIFY, never guess) and is deliberately not
+# a size synonym of "i mesem".
+BUSINESS_FAMILY = "business_rates"
+BUSINESS_SIZE_TERMS: dict[BusinessSize, tuple[str, ...]] = {
+    "small": (
+        "biznes i vogel", "biznesi i vogel", "biznes te vogel",
+        "biznesit te vogel", "biznesit i vogel",
+    ),
+    "medium": (
+        "biznes i mesem", "biznesi i mesem", "biznes te mesem",
+        "biznesit te mesem", "biznesit i mesem",
+    ),
+    "large": (
+        "biznes i madh", "biznesi i madh", "biznes te madh",
+        "biznesit te madh", "biznesit i madh",
+    ),
+}
+RATE_COMPONENT_TERMS: dict[RateComponent, tuple[str, ...]] = {
+    "nominal_rate": ("norma nominale", "normen nominale", "norme nominale",
+                     "norme nominal", "norma nominal"),
+    "nei": ("nei",),
+}
+_BUSINESS_SOURCE_MARK = "normat nominale dhe nei per bizneset"
+_MATURITY_RANGE_RE = re.compile(r"\b(\d{1,3})\s*-\s*(\d{1,3})\s+(?:muaj|mujore|muajsh)\b")
+_BUSINESS_VALUE_LINE_RE = re.compile(r"^[^:\n]+?:\s*([-+]?\d[\d .,']*)$")
 FEE_EVENT_TERMS = {
     "administration": ("administrim", "administrimi", "administrimit"),
     "application": ("aplikim", "aplikimi", "aplikimit"),
@@ -257,6 +295,10 @@ _CERTIFIABLE_RESIDUE = _QUERY_STOPWORDS | frozenset({
     "bankat", "bankes", "banken", "cfar", "cfare", "cilen", "cilin", "cili",
     "dua", "di", "do", "edhe", "jane", "jo", "ju", "lutem", "ma", "mund", "nje", "po",
     "nga", "nese", "prej", "qe", "rreth", "se", "tek", "trego", "tregoni", "thjesht", "tyre",
+    "maturitet", "maturiteti", "maturitetin", "maturitetesh", "maturitete",
+    # Discourse/interest verbs (c23 lead "Me interesojn ...").
+    "interesoj", "interesojn", "intereson", "interesojne", "interesohem",
+    "jane", "eshte",
 })
 _COVERAGE_TOKEN_RE = re.compile(r"[^\W_]+|%", re.UNICODE)
 _CERTIFIABLE_TERM_RE = re.compile(
@@ -312,6 +354,41 @@ def _rate_rows() -> tuple[dict, ...]:
             row["_id"] = f"rate_{index:04d}"
             rows.append(row)
     return tuple(rows)
+
+
+def _business_size_of(folded_question: str) -> BusinessSize | None:
+    for size, phrases in BUSINESS_SIZE_TERMS.items():
+        if any(re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", folded_question)
+               for phrase in phrases):
+            return size
+    return None
+
+
+def _maturity_band_of(folded_question: str) -> tuple[int, int] | None:
+    match = _MATURITY_RANGE_RE.search(folded_question)
+    if match:
+        return (int(match.group(1)), int(match.group(2)))
+    return None
+
+
+def _rate_component_of(folded_question: str) -> RateComponent | None:
+    for component, phrases in RATE_COMPONENT_TERMS.items():
+        if any(re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", folded_question)
+               for phrase in phrases):
+            return component
+    return None
+
+
+def _is_business_rate_ask(folded_question: str) -> bool:
+    """A business-rate ask names the business segment plus a rate metric.
+
+    The business table is NOT a banking product: bare "biznes" with a rate
+    word (normë/NEI) selects the family even without a size adjective, so a
+    missing band reliably triggers the band CLARIFY (rule 3).
+    """
+    if "biznes" not in folded_question:
+        return False
+    return any(term in folded_question for term in METRIC_TERMS["interest_rate"])
 
 
 def _source_bank_labels() -> tuple[str, ...]:
@@ -453,6 +530,14 @@ def _slot_certifiable_phrases(intent: RateIntent) -> tuple[str, ...]:
 
     if intent.metric is not None:
         phrases.extend(METRIC_TERMS[intent.metric])
+    if intent.family == BUSINESS_FAMILY:
+        if intent.business_size is not None:
+            phrases.extend(BUSINESS_SIZE_TERMS[intent.business_size])
+        if intent.rate_component is not None:
+            phrases.extend(RATE_COMPONENT_TERMS[intent.rate_component])
+        # The band literal is a certifiable source phrase ("13-24 muaj").
+        if intent.maturity_band is not None:
+            phrases.append(f"{intent.maturity_band[0]}-{intent.maturity_band[1]} muaj")
     if intent.currency is not None:
         phrases.extend(CURRENCY_TERMS[intent.currency])
     if intent.customer_segment is not None:
@@ -670,10 +755,12 @@ def _row_slots(row: dict) -> RowSlots:
             value_type = "value"
 
     term_months = None
+    maturity_band: tuple[int, int] | None = None
     range_match = re.search(r"(\d+)\s*-\s*(\d+)\s+muaj", item)
     term_match = _CERTIFIABLE_TERM_RE.search(item)
     if range_match:
         term_months = int(range_match.group(2))
+        maturity_band = (int(range_match.group(1)), int(range_match.group(2)))
     elif term_match:
         term_months = int(term_match.group(1))
 
@@ -682,7 +769,19 @@ def _row_slots(row: dict) -> RowSlots:
         amount_band = "minimum"
     elif "shum" in item and "maksimal" in item:
         amount_band = "maximum"
-    return RowSlots(product, metric, fee_event, value_type, term_months, amount_band)
+
+    business_size: BusinessSize | None = None
+    rate_component: RateComponent | None = None
+    if _BUSINESS_SOURCE_MARK in source:
+        for size, phrases in BUSINESS_SIZE_TERMS.items():
+            if any(_has_term(category, phrase) for phrase in phrases):
+                business_size = size
+                break
+        # The table header names both components; the scraped rows do not
+        # attribute individual values to one column, so a row NEVER carries a
+        # concrete rate_component (metric asks stay parse-only, never claimed).
+    return RowSlots(product, metric, fee_event, value_type, term_months,
+                    amount_band, business_size, rate_component, maturity_band)
 
 
 def _selected_bank_lines(row: dict, banks: tuple[str, ...]) -> list[str]:
@@ -697,6 +796,34 @@ def _selected_bank_lines(row: dict, banks: tuple[str, ...]) -> list[str]:
 
 def resolve_rate_rows(intent: RateIntent) -> list[dict]:
     """Resolve a typed key by slot equality and preserve stable corpus order."""
+    # Business-rate family: the BoA nominal/NEI business table. It has NO
+    # product slot and NO bank lines (values are per-category aggregates);
+    # resolution is by segment + size + maturity band (+ metric interest_rate).
+    if intent.family == BUSINESS_FAMILY:
+        resolved: list[dict] = []
+        for row in _rate_rows():
+            if str(row.get("customer_segment")) != "business":
+                continue
+            if _BUSINESS_SOURCE_MARK not in fold(str(row.get("source") or "")):
+                continue
+            slots = _row_slots(row)
+            if slots.metric != "interest_rate":
+                continue
+            if intent.business_size is not None and slots.business_size != intent.business_size:
+                continue
+            if intent.maturity_band is not None and slots.maturity_band != intent.maturity_band:
+                continue
+            # Junk sub-header rows (category repeats, no numeric value) never
+            # resolve — they carry no claimable figure.
+            if not any(_BUSINESS_VALUE_LINE_RE.match(line)
+                       for line in str(row.get("text") or "").splitlines()[1:]):
+                continue
+            copy = dict(row)
+            copy["_bank_lines"] = ()
+            copy["_row_slots"] = slots
+            resolved.append(copy)
+        return resolved
+
     product_wildcard = "product" in intent.wildcard_slots
     metric_wildcard = "metric" in intent.wildcard_slots
     family_products = PRODUCT_FAMILY.get(intent.family or "")
@@ -882,6 +1009,7 @@ def merge_elliptical(question: str, frame: RateIntent) -> RateIntent | None:
 # slot the caller meant. Any other miss is coverage, not ambiguity.
 CATALOG_DECLINE_REASONS = frozenset({
     "unknown_bank", "conflicting_slots", "comparison_dimensions_missing",
+    "maturity_band_required",
 })
 
 _EXTRACT_PRODUCTS = frozenset(PRODUCT_TERMS)
@@ -1148,6 +1276,15 @@ def parse_rate_intent(question: str) -> RateParse:
         )
         return _certified_rate_parse(question, intent)
 
+    # ---- Business-rate family branch (BoA "Normat nominale dhe NEI për
+    # bizneset"): segment=business + a rate metric, no product slot. -----
+    if _is_business_rate_ask(folded_question) and not product_matches:
+        return _business_rate_parse(
+            question, folded_question,
+            currency if currency in ("ALL", "EUR", "USD") else None,
+            customer_segment if customer_segment in ("individual", "business") else None,
+        )
+
     # ---- Value/comparison ask ----
     rate_like = bool(metric_matches) or (
         bool(product_matches) and any(term in folded_question for term in _COMPARISON_TERMS)
@@ -1262,10 +1399,54 @@ def parse_rate_intent(question: str) -> RateParse:
     return _certified_rate_parse(question, intent)
 
 
+def _business_rate_parse(
+        question: str, folded_question: str,
+        currency: Literal["ALL", "EUR", "USD"] | None,
+        customer_segment: Literal["individual", "business"] | None,
+        ) -> RateParse:
+    """Business-rate family intent with the 4 decision rules.
+
+    Rule 1: explicit source band -> deterministic ANSWER.
+    Rule 2: "maturitet mesatar" -> CLARIFY (never guess a band).
+    Rule 3: missing band -> CLARIFY unless explicit-all breadth.
+    Rule 4: explicit "të gjitha" -> deterministic listing of all bands.
+    Rule 5 (renderer): kredi is never introduced — the table has no
+    product_family=credit; values are rendered as reported, unattributed.
+    """
+    business_size = _business_size_of(folded_question)
+    rate_component = _rate_component_of(folded_question)
+    maturity_band = _maturity_band_of(folded_question)
+    explicit_all = re.search(r"\bte\s+gjitha\b", folded_question) is not None
+    mesatar = "mesatar" in folded_question
+
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="interest_rate",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family=BUSINESS_FAMILY,
+        currency=currency, customer_segment=customer_segment or "business",
+        business_size=business_size, rate_component=rate_component,
+        maturity_band=maturity_band,
+    )
+    missing_band = maturity_band is None and not explicit_all
+    if mesatar or missing_band:
+        coverage = CoverageCertification(
+            status=StructuredIntentStatus.INSUFFICIENT_COMPARISON_DIMENSIONS,
+            unresolved_qualifiers=("maturity_band",),
+        )
+        return RateParse(
+            "unsupported", intent, "maturity_band_required", coverage,
+        )
+    return _certified_rate_parse(question, intent)
+
+
 def parse_rate_intent_hybrid(question: str) -> RateParse:
     """Use the lexical fast path, then one validated LLM extraction fallback."""
     lexical = parse_rate_intent(question)
     if lexical.status in ("resolved", "not_rate"):
+        return lexical
+    if lexical.reason == "maturity_band_required":
+        # Business-rate CLARIFY is terminal: the extractor's closed universe
+        # has no business-rate family and would misread it as missing_product.
         return lexical
 
     # Import the serving gate lazily so this module remains independently
@@ -1288,7 +1469,7 @@ def parse_rate_intent_hybrid(question: str) -> RateParse:
         return RateParse("not_rate", None, "")
     if decline not in _EXTRACT_DECLINES:
         return lexical
-    return RateParse("unsupported", None, decline)
+    return RateParse("unsupported", None, decline)  # type: ignore[arg-type]  # decline value is validated against the closed reason set
 
 
 def structured_rate_hits(intent: RateIntent, k: int = 5) -> list[dict]:
@@ -1372,6 +1553,8 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
     """Render exact source labels and values without inferring any unit."""
     if intent.availability:
         return render_availability_answer(intent)
+    if intent.family == BUSINESS_FAMILY:
+        return _render_business_rate_answer(intent, hits)
     lines_by_bank: dict[str, list[str]] = {bank: [] for bank in intent.banks}
     product_lines: list[str] = []
     for hit in hits:
@@ -1394,6 +1577,44 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
             rendered.extend((f"{bank}:", *items))
     rendered.extend(product_lines)
     return "\n".join(rendered)
+
+
+def _render_business_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
+    """Render the business nominal/NEI table as reported (rule 5: no kredi).
+
+    Every value is shown as the table reports it — the scraped rows do not
+    attribute values to the nominal vs NEI column, so the renderer NEVER labels
+    a value nominal/NEI (matching the C4 no-fold decision). Band ordering is
+    deterministic by band start. Values dedupe (a repeated identical figure
+    across scraped rows adds no information).
+    """
+    grouped: dict[tuple[str, str], list[str]] = {}
+    order: list[tuple[str, str]] = []
+    for hit in hits:
+        article = str(hit.get("article") or "")
+        category, _sep, item = article.partition(" — ")
+        for line in str(hit.get("text") or "").splitlines()[1:]:
+            match = _BUSINESS_VALUE_LINE_RE.match(line.strip())
+            if not match:
+                continue
+            value = match.group(1).strip()
+            key = (category, item)
+            values = grouped.setdefault(key, [])
+            if value not in values:
+                values.append(value)
+            if key not in order:
+                order.append(key)
+    if not order:
+        return ""
+    label_fix = {" vogel": " vogël", " mesem": " mesëm"}
+    lines: list[str] = []
+    for key in order:
+        category, item = key
+        label = category
+        for src, dst in label_fix.items():
+            label = label.replace(src, dst)
+        lines.append(f"{label} — {item}: {', '.join(grouped[key])}")
+    return "\n".join(lines)
 
 
 def comparison_intent(question: str) -> ComsIntent | None:

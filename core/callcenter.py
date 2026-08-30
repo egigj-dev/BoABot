@@ -121,6 +121,7 @@ class DecisionReason(str, Enum):
     CATALOG_UNKNOWN_BANK = "catalog_unknown_bank"
     CATALOG_CONFLICTING_SLOTS = "catalog_conflicting_slots"
     COMPARISON_DIMENSIONS_MISSING = "comparison_dimensions_missing"
+    MATURITY_BAND_REQUIRED = "maturity_band_required"
     PERSONAL_RECORD_CAPABILITY_BOUNDARY = "personal_record_capability_boundary"
     CATALOG_MISSING_KEY = "catalog_missing_key"
     SEMANTIC_INCIDENT = "semantic_incident"
@@ -790,7 +791,8 @@ def _structured_rate_decision(
     """Injectable pre-LLM seam for exact closed-catalog rate requests."""
     if not _structured_rate_enabled() or not _structured_rate_eligible(question):
         return None
-    from .comparison import (CATALOG_DECLINE_REASONS, _source_bank_labels,
+    from .comparison import (CATALOG_DECLINE_REASONS, _rate_rows, _row_slots,
+                             _source_bank_labels,
                              merge_elliptical, parse_rate_intent_hybrid,
                              resolve_rate_rows)
 
@@ -862,6 +864,24 @@ def _structured_rate_decision(
                 requested = dimensions[0] if dimensions else "dimensionet e krahasimit"
             message = f"Për ta krahasuar saktë, më duhet {requested}."
             reason = DecisionReason.COMPARISON_DIMENSIONS_MISSING
+        elif parsed.reason == "maturity_band_required":
+            # Business-rate family: band required (rule 2/3 — CLARIFY, never
+            # guess). List the actual source bands from the corpus.
+            source_bands = sorted(
+                {
+                    slots.maturity_band
+                    for row in _rate_rows()
+                    if (slots := _row_slots(row)).business_size is not None
+                    and slots.maturity_band is not None
+                },
+                key=lambda band: band[0],
+            )
+            band_text = ", ".join(f"{a}-{b} muaj" for a, b in source_bands)
+            message = (
+                f"Normat e biznesit raportohen sipas maturitetit. Për cilin "
+                f"maturitet po pyesni? Tabela raporton për {band_text}."
+            )
+            reason = DecisionReason.MATURITY_BAND_REQUIRED
         return Decision(
             Outcome.CLARIFY, message, question=question,
             reason=reason,
