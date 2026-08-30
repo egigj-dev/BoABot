@@ -89,6 +89,19 @@ def test_decide_routes_meta_after_answer() -> None:
     assert "8.00" in decision.message
 
 
+def test_rights_framing_carveout_covers_postgen_replacement() -> None:
+    # c15.2 regression: 'A kam te drejte te marr kopje te kontrates se
+    # kredise?' is rights INFORMATION (router exemplar -> answer). The
+    # legal-advice POSTGEN scanner must not replace its grounded answer —
+    # _is_hypothetical_rights must match, so the api.py carve-out fires.
+    from core.callcenter import _is_hypothetical_rights
+    assert _is_hypothetical_rights("A kam te drejte te marr kopje te kontrates se kredise?")
+    assert _is_hypothetical_rights("a garanton BSH qe banka ime nuk mund te me mbyll llogarine?")
+    # Genuine advice asks are NOT carved out.
+    assert not _is_hypothetical_rights("A duhet ta paguaj demshperblim nese thyej kontraten?")
+    assert not _is_hypothetical_rights("a jam pergjegjes per kete gjobë?")
+
+
 # ---- Fix 3: superlative loan ask CLARIFYs for dims --------------------------
 def test_superlative_loan_ask_clarifies_for_dimensions() -> None:
     parsed = parse_rate_intent(

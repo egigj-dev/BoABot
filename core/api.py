@@ -20,7 +20,8 @@ from pydantic import BaseModel, Field, field_validator
 from .rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrite,
                  retrieve_evidence, rewrite)
 from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, DecisionEvent,
-                        DecisionReason, Outcome, _structured_rate_decision, decide,
+                        DecisionReason, Outcome, _is_hypothetical_rights,
+                        _structured_rate_decision, decide,
                         is_ambiguous_card_maintenance, next_structured_frame,
                         sessions)
 from .comparison import is_elliptical_rate_turn
@@ -707,10 +708,15 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             outcome = Outcome.UNSUPPORTED
             handoff_reason = DecisionReason.EMPTY_ANSWER.value
             yield from emit_policy_message(answer)
-        elif _has_legal_advice_direct(full_answer):
+        elif _has_legal_advice_direct(full_answer) and not _is_hypothetical_rights(
+                decision.question or req.question):
             # All-or-nothing: any caller-directed legal conclusion must replace
             # the whole turn. A per-sentence drop would leave a redacted
-            # personal-advice sentence standing as an answer.
+            # personal-advice sentence standing as an answer. HYPOTHETICAL /
+            # RIGHTS framing (\"a kam te drejte...\", \"a garanton BSH...\") is
+            # king of INFORMATION questions about whether a right/rule exists
+            # (the router exemplar answers them) — the postgen scanner must not
+            # replace their grounded answer, mirroring the pre-gen carve-out.
             answer = LEGAL_ADVICE_MESSAGE
             outcome = Outcome.UNSUPPORTED
             handoff_reason = DecisionReason.LEGAL_ADVICE_POSTGEN.value
