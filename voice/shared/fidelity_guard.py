@@ -15,7 +15,10 @@ VALUE_RE = re.compile(
     rf"(?P<value>{NUMBER_RE})\s*(?P<unit>%|p[eë]r\s+qind|{CURRENCY_RE})?",
     re.IGNORECASE,
 )
-BANK_RE = re.compile(r"\b(?i:Banka|Bankën|Bankës)\s+[A-ZËÇ][\wËÇëç.-]*(?:\s+[A-ZËÇ][\wËÇëç.-]*){0,5}")
+# NB: the token class deliberately EXCLUDES '.' — bank names never contain
+# dots in this corpus, and a sentence-final period ("...te Banka Union.") must
+# not become part of the entity, or it can never match evidence "Banka Union:".
+BANK_RE = re.compile(r"\b(?i:Banka|Bankën|Bankës)\s+[A-ZËÇ][\wËÇëç-]*(?:\s+[A-ZËÇ][\wËÇëç-]*){0,5}")
 DOCUMENT_RE = re.compile(
     r"\b(?:"
     r"(?i:Rregullor(?:ja|es|en)|Ligj(?:i|it)|Udhëzim(?:i|it))\s+"
@@ -58,6 +61,11 @@ LABEL_TOKEN_FORMS = {
     "biznesi": "biznes",
     "bizneseve": "biznes",
     "bizneset": "biznes",
+    "banka": "bank",
+    "bankave": "bank",
+    "bankat": "bank",
+    "banken": "bank",
+    "bankes": "bank",
     "karte": "karte",
     "kartes": "karte",
     "kredi": "kredi",
@@ -106,6 +114,18 @@ LABEL_CONFLICT_FAMILIES = (
     frozenset({"debit", "kredit"}),
     frozenset({"komisioni", "tarifa", "cmimi", "norma", "interesit"}),
 )
+
+# Bounded claim-frame words that appear in natural answer phrasing but carry no
+# product/service meaning of their own. They may be present in a sentence claim
+# without evidence-label coverage (the VALUE and BANK binding still gate).
+# Deliberately small: a service word missing from the evidence still fails.
+_GENERIC_CLAIM_TOKENS = frozenset({
+    "komision", "komisioni", "komisionit", "komisione", "komisionet",
+    "komisionesh", "tarif", "tarifa", "tarifat", "tarifes", "tarifave",
+    "aplikon", "aplikojne", "aplikonte", "prej", "sipas", "tabelave",
+    "tabela", "tabelat", "publikuara", "publikuar", "nje", "vjetor",
+    "vjetore", "vjetori", "kushton", "kosto",
+})
 
 
 def _fold(text: str) -> str:
@@ -308,6 +328,10 @@ class FidelityGuard:
                     # tokens never participate in product/service label matching.
                     for entity in BANK_RE.findall(sentence):
                         comparable_sentence_tokens -= _label_tokens(entity)
+                    # Generic claim-frame words (komision, tarif, prej, nje...)
+                    # are uninterpretable as service labels; strip them before
+                    # any subset comparison.
+                    comparable_sentence_tokens -= _GENERIC_CLAIM_TOKENS
                     evidence_label_tokens = _label_tokens(evidence.label)
                     if evidence.table_row:
                         evidence_bank_keys = _folded_bank_keys(evidence.label)
@@ -315,12 +339,21 @@ class FidelityGuard:
                             not sentence_bank_keys
                             or bool(sentence_bank_keys & evidence_bank_keys)
                         )
+                        # Table rows carry only the bank label ("Banka Union: 2.00");
+                        # the service wording lives in the column header, so
+                        # sentence service tokens are checked against the whole
+                        # chunk vocabulary (headers + rows) — the exact VALUE and
+                        # BANK pair still gates each claim.
                         label_compatible = (
                             entity_compatible
-                            and comparable_sentence_tokens <= evidence_label_tokens
+                            and comparable_sentence_tokens <= (
+                                evidence_label_tokens | chunk_label_tokens
+                            )
                         )
                     else:
-                        label_compatible = comparable_sentence_tokens <= chunk_label_tokens
+                        label_compatible = (
+                            comparable_sentence_tokens <= chunk_label_tokens
+                        )
                     if claim.value == evidence.value and same_unit and label_compatible:
                         compatible = True
                         break
