@@ -341,10 +341,60 @@ _INCIDENT_MARKER_RE = re.compile(
     r"raportoj|kartel|ime|time|mua)\b",
     re.I,
 )
+_RATE_FEE_TOPIC_RE = re.compile(
+    r"\b(?:komision|tarif|norm|interes|penalitet|mirembajt)\w*",
+    re.I,
+)
+_BARE_NP_SLOT_RE = re.compile(
+    r"\b(?:kart|debit|kredi|depozit|llogari|individ|person\w*\s+fizik|"
+    r"biznes|person\w*\s+juridik)\w*",
+    re.I,
+)
+_BARE_NP_ACTION_RE = re.compile(
+    r"\b(?:humb|vjedh|mashtr|bll?oko|mbyll)\w*",
+    re.I,
+)
+
+
+def _last_user_turn(history: list[dict[str, str]]) -> str:
+    for item in reversed(history):
+        if item.get("role") == "user":
+            return item.get("content", "")
+    return ""
+
+
+def _is_bare_np_rate_continuation(
+        text: str, last_outcome: Outcome | None,
+        history: list[dict[str, str]], frame: RateIntent | None) -> bool:
+    """Recognize slot-only answers to a preceding rate/fee turn."""
+    if last_outcome not in {Outcome.CLARIFY, Outcome.ANSWER}:
+        return False
+    folded = fold(text)
+    if (_QUESTION_MARKER_RE.search(folded)
+            or _BARE_NP_ACTION_RE.search(folded)):
+        return False
+    has_slot = _BARE_NP_SLOT_RE.search(folded) is not None
+    if not has_slot:
+        has_slot = any(
+            re.search(rf"\b{re.escape(name)}\b", folded)
+            for name in bank_names()
+        )
+    if not has_slot:
+        return False
+    # Direct policy callers historically supplied only last_outcome. Preserve
+    # that seam; real sessions always carry the preceding user turn below.
+    if last_outcome is Outcome.CLARIFY and not history:
+        return True
+    if (frame is not None
+            and frame.metric in {"interest_rate", "fee", "penalty"}):
+        return True
+    return _RATE_FEE_TOPIC_RE.search(fold(_last_user_turn(history))) is not None
 
 
 def _is_informational_banking_query(
-        text: str, last_outcome: Outcome | None = None) -> bool:
+        text: str, last_outcome: Outcome | None = None,
+        history: list[dict[str, str]] | None = None,
+        frame: RateIntent | None = None) -> bool:
     folded = fold(text)
     has_domain_marker = bool(_DOMAIN_MARKER_RE.search(folded))
     has_incident_marker = bool(_INCIDENT_MARKER_RE.search(folded))
@@ -361,12 +411,9 @@ def _is_informational_banking_query(
         and has_domain_marker
         and not has_incident_marker
     ) or (
-        # A domain-bearing fragment immediately after CLARIFY answers the
-        # disambiguation prompt; it is informational even without a question
-        # word. Incident/credential vocabulary retains precedence and still
-        # reaches the frozen incident probe below.
-        last_outcome == Outcome.CLARIFY
-        and has_domain_marker
+        _is_bare_np_rate_continuation(
+            text, last_outcome, history or [], frame,
+        )
         and not has_incident_marker
     )
 
@@ -938,7 +985,8 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
 
     query_embedding = _encode_question(clean_question)
     incident_score = None
-    if not _is_informational_banking_query(clean_question, last_outcome):
+    if not _is_informational_banking_query(
+            clean_question, last_outcome, history, last_structured_frame):
         # Deterministic backstop: the frozen incident classifier still runs on
         # non-informational turns so an LLM-missed incident escalates. Incident
         # vocabulary is routed through the classifier unchanged.
