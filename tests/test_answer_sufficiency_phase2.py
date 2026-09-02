@@ -83,3 +83,37 @@ def test_partial_support_instruction_names_supported_and_unknown():
     partial = messages[2]["content"]
     assert "çfarë mbështetet" in partial
     assert "çfarë mbetet e panjohur" in partial
+
+
+def test_price_fact_outranks_offer_and_possession_verbs():
+    assert answerability.requested_fact(
+        "Sa është norma që ofron BKT?"
+    ) is answerability.RequestedFact.INTEREST_RATE
+    assert answerability.requested_fact(
+        "Sa është tarifa që ka BKT?"
+    ) is answerability.RequestedFact.FEE_AMOUNT
+    assert answerability.requested_fact(
+        "Cilat janë tarifat e publikuara nga BKT?"
+    ) is answerability.RequestedFact.FEE_AMOUNT
+
+
+def test_definition_outranks_fee_amount_shape():
+    assert answerability.requested_fact(
+        "Çfarë është tarifa e transferimit?"
+    ) is answerability.RequestedFact.DEFINITION
+
+
+def test_unrelated_amount_in_next_sentence_does_not_satisfy_fee_fact():
+    evidence = _hit(
+        "Tarifa duhet të publikohet. Shuma e transfertës është 500 euro."
+    )
+    assert answerability.lexical_verdict(
+        "Sa është tarifa për transfertën?", [evidence],
+    ) == (False, "abstain_price_without_value")
+
+
+def test_decimal_fee_value_survives_sentence_splitting():
+    evidence = _hit("Komisioni i transfertës është 2.00%. Kushtet vijojnë.")
+    assert answerability.lexical_verdict(
+        "Sa është komisioni i transfertës?", [evidence],
+    ) == (True, "")

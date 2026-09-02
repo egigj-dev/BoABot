@@ -150,3 +150,35 @@ def test_transfer_amount_is_not_mistaken_for_fee(deterministic):
 def test_reported_fee_normality_is_not_transfer_amount_intent(deterministic):
     decision = callcenter.decide("Tarifa ishte 500 lekë. A është normale?", "", [])
     assert decision.reason is callcenter.DecisionReason.DENSE_RETRIEVAL
+
+
+def test_pending_transfer_frame_does_not_capture_unrelated_turns(deterministic):
+    first = callcenter.decide(
+        "Cilat janë tarifat për transfertat bankare?", "", [],
+    )
+    frame = callcenter.next_structured_frame(first, None)
+
+    assert callcenter._transfer_fee_decision("Faleminderit", frame) is None
+    assert callcenter._transfer_fee_decision("A ofron BKT kredi?", frame) is None
+
+
+def test_bank_only_followup_still_uses_pending_transfer_frame(deterministic):
+    first = callcenter.decide(
+        "Cilat janë tarifat për transfertat bankare?", "", [],
+    )
+    frame = callcenter.next_structured_frame(first, None)
+    scoped = callcenter.decide(
+        "Për individë, brenda vendit.", "", [], last_structured_frame=frame,
+    )
+    frame = callcenter.next_structured_frame(scoped, frame)
+
+    bank = callcenter._transfer_fee_decision("Për BKT.", frame)
+    assert bank is not None
+    assert bank.rate_intent.banks == ("Banka Kombëtare Tregtare",)
+
+
+def test_unavailable_transfer_result_clears_pending_frame(deterministic):
+    decision = callcenter.decide(
+        "Sa kushton transferta brenda vendit për individë te BKT?", "", [],
+    )
+    assert callcenter.next_structured_frame(decision, decision.rate_intent) is None

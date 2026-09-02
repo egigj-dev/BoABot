@@ -110,30 +110,31 @@ class RequestedFact(str, Enum):
 
 def requested_fact(question: str) -> RequestedFact:
     folded = fold(question)
-    if re.search(r"\b(?:publik|detyrim|transparenc)\w*\b|\b(?:cfar|cil)\w*\s+rregull\w*", folded):
-        return RequestedFact.REGULATORY_RULE
+    if re.search(r"\b(?:cfare eshte|perkufiz)\w*\b", folded):
+        return RequestedFact.DEFINITION
     if re.search(r"\b(?:me e ulet|me te ulet|me e lire|me te mire|krahas)\w*\b", folded):
         return RequestedFact.COMPARISON_RANKING
-    if re.search(r"\b(?:ofron|ofrojne|ka)\b", folded):
-        return RequestedFact.PRODUCT_AVAILABILITY
     if _price_ask(question):
         if re.search(r"\b(?:tarif|komision|kosto)\w*\b", folded):
             return RequestedFact.FEE_AMOUNT
         if re.search(r"\b(?:interes|norm)\w*\b", folded):
             return RequestedFact.INTEREST_RATE
-    if re.search(r"\b(?:cfare eshte|perkufiz)\w*\b", folded):
-        return RequestedFact.DEFINITION
+    if re.search(
+            r"\b(?:publik|detyrim|transparenc)\w*\b|"
+            r"\b(?:cfar|cil)\w*\s+rregull\w*", folded):
+        return RequestedFact.REGULATORY_RULE
+    if re.search(r"\b(?:ofron|ofrojne|ka)\b", folded):
+        return RequestedFact.PRODUCT_AVAILABILITY
     if re.search(r"\b(?:si mund|si behet|procedure)\w*\b", folded):
         return RequestedFact.PROCEDURE
     if re.search(r"\bcilat?\s+banka\b", folded):
         return RequestedFact.INSTITUTION_IDENTITY
     return RequestedFact.GENERAL_INFORMATION
 
-
 def _hits_contain_requested_financial_value(hits) -> bool:
     for hit in hits:
         text = str(hit.get("text") or "")
-        for sentence in re.split(r"[\n!?]+", text):
+        for sentence in re.split(r"[\n!?]+|(?<!\d)\.(?!\d)", text):
             if _FINANCIAL_FACT_RE.search(sentence) and _FINANCIAL_VALUE_RE.search(sentence):
                 return True
     return False

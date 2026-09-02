@@ -191,7 +191,6 @@ def frame_effect(reason: DecisionReason) -> ContextEffect:
     if reason in {
         DecisionReason.CATALOG_EXACT_HIT,
         DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
-        DecisionReason.TRANSFER_FEE_PRICE_UNAVAILABLE,
     }:
         return ContextEffect.REPLACE
     if reason in {
@@ -855,6 +854,24 @@ def _transfer_fee_decision(
         or (_TRANSFER_SEND_RE.search(folded)
             and re.search(r"\b(?:para|euro|lek\w*)\b", folded))
     )
+    explicit_segment = _conservative_value(folded, CUSTOMER_SEGMENT_TERMS)
+    explicit_domestic = _TRANSFER_DOMESTIC_RE.search(folded) is not None
+    explicit_international = _TRANSFER_INTERNATIONAL_RE.search(folded) is not None
+    explicit_comparison = _TRANSFER_COMPARISON_RE.search(folded) is not None
+    candidate_banks, bank_spans = _named_banks(folded)
+    bank_residue = folded
+    for start, end in reversed(bank_spans):
+        bank_residue = bank_residue[:start] + " " + bank_residue[end:]
+    residue_words = re.findall(r"[^\W_]+", bank_residue, flags=re.UNICODE)
+    bank_only_followup = bool(candidate_banks) and all(
+        word in {"po", "per", "te", "tek", "banka", "banken"}
+        for word in residue_words
+    )
+    if (inherited is not None and not explicit_service
+            and explicit_segment is None and not explicit_domestic
+            and not explicit_international and not explicit_comparison
+            and not bank_only_followup):
+        return None
     if inherited is None:
         if not explicit_service or not _TRANSFER_PRICE_RE.search(folded):
             return None
@@ -866,22 +883,22 @@ def _transfer_fee_decision(
     if _is_account_action(question) or _ACTIVE_INCIDENT_FOR_RATE_RE.search(folded):
         return None
 
-    segment = _conservative_value(folded, CUSTOMER_SEGMENT_TERMS)
+    segment = explicit_segment
     if segment not in ("individual", "business"):
         segment = inherited.customer_segment if inherited is not None else None
 
     transfer_scope = None
-    if _TRANSFER_DOMESTIC_RE.search(folded):
+    if explicit_domestic:
         transfer_scope = "domestic"
-    elif _TRANSFER_INTERNATIONAL_RE.search(folded):
+    elif explicit_international:
         transfer_scope = "international"
     elif inherited is not None:
         transfer_scope = inherited.transfer_scope
 
-    banks, _spans = _named_banks(folded)
+    banks = candidate_banks
     if banks:
         bank_scope = "named"
-    elif _TRANSFER_COMPARISON_RE.search(folded):
+    elif explicit_comparison:
         bank_scope = "all"
     elif inherited is not None:
         bank_scope = inherited.bank_scope
