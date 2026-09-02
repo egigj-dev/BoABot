@@ -30,7 +30,7 @@ def _run_turn(monkeypatch, caplog, *, decision=None, stream_raises=False,
     monkeypatch.setattr(api, "decide", lambda *a, **k: decision)
     monkeypatch.setattr(api, "needs_rewrite", lambda *a, **k: False)
     monkeypatch.setattr(api, "retrieve_evidence", lambda *a, **k: (
-        [{"id": "rate_0001", "doc": "Doc", "article": "", "url": "u", "text": "t 2%", "dense_score": 0.9}],
+        [{"id": "rate_0001", "doc": "Doc", "article": "", "url": "u", "text": "Komisioni është 2%.", "dense_score": 0.9}],
         "",
     ))
     monkeypatch.setattr(api, "grounded_messages", lambda *a, **k: [])

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import os
 import re
+from enum import Enum
 
 from .text_norm import fold
 from .trust import PRICE_INTENT
@@ -47,6 +48,13 @@ _ENABLE = ("1", "true", "yes", "on")
 # Mirrors the explicit-article regex in core/rag.py so both agree on "neni N".
 _ARTICLE_RE = re.compile(r"\bneni(?:n|t)?\s+(\d+(?:/\d+)?)\b", re.I)
 _DIGIT_RE = re.compile(r"\d")
+_FINANCIAL_VALUE_RE = re.compile(
+    r"(?:\d+[.,]\d+|\d+(?:[ '.]\d+)*\s*(?:%|lek\w*|eur|euro|usd|dollar\w*))",
+    re.I,
+)
+_FINANCIAL_FACT_RE = re.compile(
+    r"\b(?:tarif|komision|kosto|interes|norm)\w*\b", re.I,
+)
 
 ABSTAIN_MESSAGE = (
     "Nuk kam një përgjigje të saktë për këtë pyetje nga të dhënat e publikuara. "
@@ -60,14 +68,17 @@ _VERDICT_SYSTEM = (
     "materialet e marra do të jepen më poshtë. Vendos nëse materialet përmbajnë "
     "informacion të mjaftueshëm për t'u përgjigjur pyetjes, edhe kur përgjigja "
     "duhet ndërtuar duke bashkuar disa fragmente. Kthe VETËM një fjalë, pa asnjë "
-    "shpjegim: YES nëse materialet përmbajnë të dhëna për temën, produktin ose "
-    "entitetin që pyetet, edhe nëse përgjigja e plotë duhet ndërtuar nga disa "
-    "fragmente (asistenti përgjigjet vetëm me atë që materialet mbështesin); "
-    "NO vetëm nëse materialet janë për një temë tjetër dhe nuk kanë të bëjnë fare "
-    "me atë që pyetet; UNCLEAR nëse materialet janë pjesërisht në temë por të "
-    "paplota pa asnjë të dhënë të përdorshme."
+    "shpjegim: YES vetëm nëse materialet vendosin vetë faktin e kërkuar. "
+    "Lidhja tematike nuk mjafton: detyrimi për publikimin e një tarife nuk "
+    "vendos shumën e tarifës; një normë nga vetëm një bankë nuk vendos renditjen; "
+    "dhe kredia e përgjithshme nuk vendos disponueshmërinë e kredisë për udhëtime. "
+    "NO nëse fakti i kërkuar nuk mbështetet. UNCLEAR vetëm kur një pjesë e faktit "
+    "të kërkuar mbështetet, por përgjigjja mbetet realisht e paplotë."
 )
-_VERDICT_USER = "pyetja: {question}\n\nmaterialet e marra:\n{evidence}"
+_VERDICT_USER = (
+    "fakti i kërkuar: {requested_fact}\n"
+    "pyetja: {question}\n\nmaterialet e marra:\n{evidence}"
+)
 _VERDICT_YES = re.compile(r"\bYES\b", re.I)
 _VERDICT_NO = re.compile(r"\bNO\b", re.I)
 _VERDICT_UNCLEAR = re.compile(r"\bUNCLEAR\b", re.I)
@@ -85,6 +96,49 @@ def _hits_contain_digit(hits) -> bool:
     return any(_DIGIT_RE.search(str(hit.get("text") or "")) for hit in hits)
 
 
+class RequestedFact(str, Enum):
+    FEE_AMOUNT = "FEE_AMOUNT"
+    INTEREST_RATE = "INTEREST_RATE"
+    COMPARISON_RANKING = "COMPARISON_RANKING"
+    PRODUCT_AVAILABILITY = "PRODUCT_AVAILABILITY"
+    REGULATORY_RULE = "REGULATORY_RULE"
+    DEFINITION = "DEFINITION"
+    PROCEDURE = "PROCEDURE"
+    INSTITUTION_IDENTITY = "INSTITUTION_IDENTITY"
+    GENERAL_INFORMATION = "GENERAL_INFORMATION"
+
+
+def requested_fact(question: str) -> RequestedFact:
+    folded = fold(question)
+    if re.search(r"\b(?:publik|detyrim|transparenc)\w*\b|\b(?:cfar|cil)\w*\s+rregull\w*", folded):
+        return RequestedFact.REGULATORY_RULE
+    if re.search(r"\b(?:me e ulet|me te ulet|me e lire|me te mire|krahas)\w*\b", folded):
+        return RequestedFact.COMPARISON_RANKING
+    if re.search(r"\b(?:ofron|ofrojne|ka)\b", folded):
+        return RequestedFact.PRODUCT_AVAILABILITY
+    if _price_ask(question):
+        if re.search(r"\b(?:tarif|komision|kosto)\w*\b", folded):
+            return RequestedFact.FEE_AMOUNT
+        if re.search(r"\b(?:interes|norm)\w*\b", folded):
+            return RequestedFact.INTEREST_RATE
+    if re.search(r"\b(?:cfare eshte|perkufiz)\w*\b", folded):
+        return RequestedFact.DEFINITION
+    if re.search(r"\b(?:si mund|si behet|procedure)\w*\b", folded):
+        return RequestedFact.PROCEDURE
+    if re.search(r"\bcilat?\s+banka\b", folded):
+        return RequestedFact.INSTITUTION_IDENTITY
+    return RequestedFact.GENERAL_INFORMATION
+
+
+def _hits_contain_requested_financial_value(hits) -> bool:
+    for hit in hits:
+        text = str(hit.get("text") or "")
+        for sentence in re.split(r"[\n!?]+", text):
+            if _FINANCIAL_FACT_RE.search(sentence) and _FINANCIAL_VALUE_RE.search(sentence):
+                return True
+    return False
+
+
 def _hits_have_article(hits, article: str) -> bool:
     """True if any accepted chunk carries the article, or is an explicitly pinned hit."""
     for hit in hits:
@@ -97,7 +151,11 @@ def _hits_have_article(hits, article: str) -> bool:
 
 def _price_ask(question: str) -> bool:
     folded = fold(question)
-    return any(term in folded for term in PRICE_INTENT)
+    return (
+        any(term in folded for term in PRICE_INTENT)
+        or re.search(r"\bcilat?\s+jane\s+(?:tarif|komision|kosto)\w*", folded)
+        is not None
+    )
 
 
 def lexical_verdict(question: str, hits) -> tuple[bool, str]:
@@ -106,7 +164,9 @@ def lexical_verdict(question: str, hits) -> tuple[bool, str]:
     article = _ARTICLE_RE.search(folded)
     if article and not _hits_have_article(hits, article.group(1)):
         return False, "abstain_no_article_in_evidence"
-    if _price_ask(question) and not _hits_contain_digit(hits):
+    fact = requested_fact(question)
+    if (fact in {RequestedFact.FEE_AMOUNT, RequestedFact.INTEREST_RATE}
+            and not _hits_contain_requested_financial_value(hits)):
         return False, "abstain_price_without_value"
     return True, ""
 
@@ -199,7 +259,10 @@ def _answerability_verdict(question: str, hits):
     if not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")):
         return None
     material = _evidence_text(hits)
-    user_content = _VERDICT_USER.format(question=question, evidence=material)
+    user_content = _VERDICT_USER.format(
+        requested_fact=requested_fact(question).value,
+        question=question, evidence=material,
+    )
     try:
         from . import rag
         out = rag._post({

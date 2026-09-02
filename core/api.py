@@ -693,7 +693,9 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
         # Generation must see the same standalone query that selected the
         # evidence. Passing an elliptical original (for example "Dhe neni 7?")
         # made the model occasionally ignore an exact article hit.
-        messages = grounded_messages(standalone_query, session.history, hits)
+        messages = grounded_messages(
+            standalone_query, session.history, hits, support_level=support_level,
+        )
 
         # Buffer through the complete fidelity pass before any generated text is
         # released. A rejection can therefore never invalidate spoken output.
