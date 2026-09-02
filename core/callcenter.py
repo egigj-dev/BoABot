@@ -36,6 +36,18 @@ CARD_CLARIFY_MESSAGE = (
     "Ju lutem specifikoni nëse karta është debiti apo krediti dhe nëse është "
     "për individ apo biznes."
 )
+TRANSFER_FEE_CLARIFY_MESSAGE = (
+    "Për individë apo biznese? Dhe bëhet fjalë për transfertë brenda "
+    "Shqipërisë apo jashtë vendit?"
+)
+TRANSFER_FEE_BANK_CLARIFY_MESSAGE = (
+    "Dëshironi një bankë specifike apo krahasim mes bankave?"
+)
+TRANSFER_FEE_UNAVAILABLE_MESSAGE = (
+    "Nuk kam të dhëna të publikuara që konfirmojnë shumën konkrete të kësaj "
+    "tarife. Materialet që kam për këtë temë trajtojnë transparencën e "
+    "tarifave, jo shumën konkrete të tyre."
+)
 LEGAL_ADVICE_MESSAGE = (
     "Kjo pyetje ka të bëjë me një çështje ligjore të situatës tuaj të veçantë, "
     "jo vetëm me informacionin rregullator që unë ndaj. Unë jap vetëm informacion "
@@ -122,6 +134,8 @@ class DecisionReason(str, Enum):
     CATALOG_CONFLICTING_SLOTS = "catalog_conflicting_slots"
     COMPARISON_DIMENSIONS_MISSING = "comparison_dimensions_missing"
     MATURITY_BAND_REQUIRED = "maturity_band_required"
+    TRANSFER_FEE_DIMENSIONS_MISSING = "transfer_fee_dimensions_missing"
+    TRANSFER_FEE_PRICE_UNAVAILABLE = "transfer_fee_price_unavailable"
     PRODUCT_CAPABILITY = "product_capability"
     PERSONAL_RECORD_CAPABILITY_BOUNDARY = "personal_record_capability_boundary"
     CATALOG_MISSING_KEY = "catalog_missing_key"
@@ -174,7 +188,11 @@ class Session:
 
 def frame_effect(reason: DecisionReason) -> ContextEffect:
     """Return the structured-frame lifecycle effect for a terminal reason."""
-    if reason is DecisionReason.CATALOG_EXACT_HIT:
+    if reason in {
+        DecisionReason.CATALOG_EXACT_HIT,
+        DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+        DecisionReason.TRANSFER_FEE_PRICE_UNAVAILABLE,
+    }:
         return ContextEffect.REPLACE
     if reason in {
         DecisionReason.REPEAT,
@@ -805,6 +823,99 @@ _ACTIVE_INCIDENT_FOR_RATE_RE = re.compile(
 )
 
 
+
+_TRANSFER_SERVICE_RE = re.compile(r"\b(?:transfert\w*|transfer\w*)\b", re.I)
+_TRANSFER_SEND_RE = re.compile(r"\b(?:dergoj|derguar|dergim\w*)\b", re.I)
+_TRANSFER_PRICE_RE = re.compile(
+    r"\b(?:sa\s+(?:kushton|eshte)|cilat?\s+jane|cfar\w*)\b|"
+    r"\b(?:tarif|komision|kosto)\w*\b", re.I,
+)
+_TRANSFER_REGULATORY_RE = re.compile(
+    r"\b(?:rregull\w*|publik\w*|transparenc\w*|detyrim\w*)\b", re.I,
+)
+_TRANSFER_DOMESTIC_RE = re.compile(r"\bbrenda\s+(?:vendit|shqiperise)\b", re.I)
+_TRANSFER_INTERNATIONAL_RE = re.compile(
+    r"\b(?:jashte\s+(?:vendit|shqiperise)|nderkombetar\w*)\b", re.I,
+)
+_TRANSFER_COMPARISON_RE = re.compile(
+    r"\b(?:krahasim\w*\s+mes\s+bank\w*|krahaso\w*)\b", re.I,
+)
+
+
+def _transfer_fee_decision(
+        question: str, frame: RateIntent | None = None) -> Decision | None:
+    """Resolve transfer-fee amount asks before any router, embedding, or RAG call."""
+    from .comparison import (CUSTOMER_SEGMENT_TERMS, RateIntent,
+                             _conservative_value, _named_banks)
+
+    folded = fold(question)
+    inherited = frame if frame is not None and frame.family == "bank_transfer" else None
+    explicit_service = bool(
+        _TRANSFER_SERVICE_RE.search(folded)
+        or (_TRANSFER_SEND_RE.search(folded)
+            and re.search(r"\b(?:para|euro|lek\w*)\b", folded))
+    )
+    if inherited is None:
+        if not explicit_service or not _TRANSFER_PRICE_RE.search(folded):
+            return None
+        if _TRANSFER_REGULATORY_RE.search(folded):
+            return None
+    elif explicit_service and _TRANSFER_REGULATORY_RE.search(folded):
+        return None
+
+    if _is_account_action(question) or _ACTIVE_INCIDENT_FOR_RATE_RE.search(folded):
+        return None
+
+    segment = _conservative_value(folded, CUSTOMER_SEGMENT_TERMS)
+    if segment not in ("individual", "business"):
+        segment = inherited.customer_segment if inherited is not None else None
+
+    transfer_scope = None
+    if _TRANSFER_DOMESTIC_RE.search(folded):
+        transfer_scope = "domestic"
+    elif _TRANSFER_INTERNATIONAL_RE.search(folded):
+        transfer_scope = "international"
+    elif inherited is not None:
+        transfer_scope = inherited.transfer_scope
+
+    banks, _spans = _named_banks(folded)
+    if banks:
+        bank_scope = "named"
+    elif _TRANSFER_COMPARISON_RE.search(folded):
+        bank_scope = "all"
+    elif inherited is not None:
+        bank_scope = inherited.bank_scope
+        banks = inherited.banks
+    else:
+        bank_scope = "missing"
+
+    intent = RateIntent(
+        bank_scope=bank_scope, banks=banks, product=None, metric="fee",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="leaf", family="bank_transfer", customer_segment=segment,
+        transfer_scope=transfer_scope,
+    )
+    if segment is None or transfer_scope is None:
+        return Decision(
+            Outcome.CLARIFY, TRANSFER_FEE_CLARIFY_MESSAGE, question=question,
+            reason=DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+            rate_intent=intent,
+            trace_flags=frozenset({DecisionEvent.structured_lookup}),
+        )
+    if bank_scope == "missing":
+        return Decision(
+            Outcome.CLARIFY, TRANSFER_FEE_BANK_CLARIFY_MESSAGE, question=question,
+            reason=DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+            rate_intent=intent,
+            trace_flags=frozenset({DecisionEvent.structured_lookup}),
+        )
+    return Decision(
+        Outcome.UNSUPPORTED, TRANSFER_FEE_UNAVAILABLE_MESSAGE, question=question,
+        reason=DecisionReason.TRANSFER_FEE_PRICE_UNAVAILABLE,
+        rate_intent=intent,
+        trace_flags=frozenset({DecisionEvent.structured_lookup}),
+    )
+
 def _structured_rate_enabled() -> bool:
     return os.environ.get("BOABOT_COMPARISON_STRUCTURED", "").strip().lower() in _ENABLE
 
@@ -1020,6 +1131,11 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
             question=clean_question, handoff=last_handoff,
             reason=DecisionReason.NEGATION_STATEMENT,
         )
+
+    # ---- Transfer-fee amount seam (deterministic, NEVER retrieves) ----
+    transfer_fee = _transfer_fee_decision(clean_question, last_structured_frame)
+    if transfer_fee is not None:
+        return transfer_fee
 
     # ---- Fragment/meta floor (deterministic, NEVER retrieves) ----
     # [SUPERSEDED] This floor previously lived only inside router.classify_turn /

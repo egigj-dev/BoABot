@@ -82,7 +82,7 @@ class CoverageCertification(NamedTuple):
 class RateIntent(NamedTuple):
     """Fully typed key used by both routing and exact row resolution."""
 
-    bank_scope: Literal["named", "all"]
+    bank_scope: Literal["named", "all", "missing"]
     banks: tuple[str, ...]
     product: Product | None
     metric: Metric | None
@@ -101,13 +101,16 @@ class RateIntent(NamedTuple):
     business_size: BusinessSize | None = None
     rate_component: RateComponent | None = None
     maturity_band: tuple[int, int] | None = None
+    # Narrow structured seam for transfer-fee conversations. The current
+    # corpus has no transfer-price rows, so this is dialogue context only.
+    transfer_scope: Literal["domestic", "international"] | None = None
 
 
 def _rate_intent_asdict(intent: RateIntent) -> dict:
     """Keep legacy serialized intents stable while exposing populated new slots."""
     values = dict(zip(intent._fields, intent))
     for key in ("currency", "customer_segment", "business_size",
-                "rate_component", "maturity_band"):
+                "rate_component", "maturity_band", "transfer_scope"):
         if values[key] is None:
             values.pop(key)
     if not values["wildcard_slots"]:

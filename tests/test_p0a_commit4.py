@@ -20,7 +20,11 @@ def _done(response):
 
 
 def test_frame_effect_and_next_structured_frame_mapping() -> None:
-    replace = {DecisionReason.CATALOG_EXACT_HIT}
+    replace = {
+        DecisionReason.CATALOG_EXACT_HIT,
+        DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+        DecisionReason.TRANSFER_FEE_PRICE_UNAVAILABLE,
+    }
     preserve = {
         DecisionReason.REPEAT,
         DecisionReason.NEGATION_STATEMENT,
