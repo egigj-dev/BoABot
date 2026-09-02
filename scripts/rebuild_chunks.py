@@ -24,6 +24,7 @@ from sentence_transformers import SentenceTransformer
 DSN = os.environ.get("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")
 MAX_CHARS = 12_000
 ARTICLE_HEADING = re.compile(r"^Neni\s+(\d+(?:/\d+)?)\b", re.MULTILINE | re.IGNORECASE)
+YEAR_LIKE_ARTICLE = re.compile(r"^(?:19|20)\d{2}$")
 SECTION_HEADING = re.compile(
     r"^(?:KREU|NËNKREU|ANEKSI|SHTOJCA|PJESA)\b|^[A-ZÇË][A-ZÇË \-]{7,}$",
     re.MULTILINE,
@@ -49,7 +50,7 @@ class SourceRow:
     section: str | None
     url: str | None
     text: str
-    embedding: str
+    embedding: str | None
 
 
 @dataclass
@@ -69,6 +70,21 @@ def body_text(text: str) -> str:
     return HEADER.sub("", text, count=1)
 
 
+def valid_article_identifier(article: str | None) -> bool:
+    """Reject standalone years or joined page-footnote markers as articles."""
+    return article is not None and YEAR_LIKE_ARTICLE.fullmatch(article) is None
+
+
+def sanitize_source_row(row: SourceRow) -> SourceRow:
+    """Clear false year-like metadata and force re-embedding of changed text."""
+    if row.article is None or valid_article_identifier(row.article):
+        return row
+    return SourceRow(
+        id=row.id, doc=row.doc, article=None, status=row.status,
+        section=row.section, url=row.url, text=body_text(row.text), embedding=None,
+    )
+
+
 def raw_headings(rows: list[SourceRow]) -> set[str]:
     return {
         match.group(1)
@@ -80,7 +96,7 @@ def raw_headings(rows: list[SourceRow]) -> set[str]:
 def verified_article(rows: list[SourceRow]) -> bool:
     article = rows[0].article
     headings = raw_headings(rows)
-    return article is not None and headings == {article}
+    return valid_article_identifier(article) and headings == {article}
 
 
 def normalized_prefix(text: str) -> str:
@@ -140,6 +156,7 @@ def select_id(source_ids: list[str], used: set[str]) -> str:
 
 
 def build_output(rows: list[SourceRow]) -> tuple[list[OutputRow], dict[str, str], dict[str, int]]:
+    rows = [sanitize_source_row(row) for row in rows]
     grouped: dict[tuple[str | None, str | None, str | None], list[SourceRow]] = defaultdict(list)
     for row in rows:
         grouped[(row.doc, row.article, row.status)].append(row)

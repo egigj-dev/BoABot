@@ -120,6 +120,7 @@ def build_output(
     rows: list[base.SourceRow],
 ) -> tuple[list[base.OutputRow], dict[str, str], dict[str, int]]:
     """Keep the base rebuild policy, replacing only verified-fragment joining."""
+    rows = [base.sanitize_source_row(row) for row in rows]
     grouped: dict[tuple[str | None, str | None, str | None], list[base.SourceRow]] = defaultdict(list)
     for row in rows:
         grouped[(row.doc, row.article, row.status)].append(row)
