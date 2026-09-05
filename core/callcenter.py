@@ -23,7 +23,7 @@ from .trust import (INSTITUTION_REGISTER_SOURCE, NO_EVIDENCE_MESSAGE,
                     UNSAFE_INPUT_MESSAGE, bank_names, input_gate)
 
 if TYPE_CHECKING:
-    from .comparison import RateIntent
+    from .comparison import RateIntent, ResponsePlan
 
 MAX_HISTORY_MESSAGES = 12
 SESSION_TTL_SECONDS = 60 * 60
@@ -137,6 +137,8 @@ class DecisionReason(str, Enum):
     MATURITY_BAND_REQUIRED = "maturity_band_required"
     TRANSFER_FEE_DIMENSIONS_MISSING = "transfer_fee_dimensions_missing"
     TRANSFER_FEE_PRICE_UNAVAILABLE = "transfer_fee_price_unavailable"
+    STRUCTURED_PLANNER_CLARIFY = "structured_planner_clarify"
+    STRUCTURED_ANSWER_AND_FOLLOW_UP = "structured_answer_and_follow_up"
     PRODUCT_CAPABILITY = "product_capability"
     PERSONAL_RECORD_CAPABILITY_BOUNDARY = "personal_record_capability_boundary"
     CATALOG_MISSING_KEY = "catalog_missing_key"
@@ -174,6 +176,7 @@ class Decision:
     rewritten_query: str | None = None  # Step 2b: standalone query from the fused router call (when ON).
     legal_flags: dict | None = None  # Step 10 groundwork: structured flags from the fused call, if any.
     rate_intent: RateIntent | None = None  # Typed key on the no-LLM structured path.
+    response_plan: ResponsePlan | None = None
     trace_flags: frozenset[DecisionEvent] = field(default_factory=frozenset, kw_only=True)
 
 @dataclass
@@ -191,6 +194,7 @@ def frame_effect(reason: DecisionReason) -> ContextEffect:
     """Return the structured-frame lifecycle effect for a terminal reason."""
     if reason in {
         DecisionReason.CATALOG_EXACT_HIT,
+        DecisionReason.STRUCTURED_PLANNER_CLARIFY,
         DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
     }:
         return ContextEffect.REPLACE
@@ -984,12 +988,29 @@ def _structured_rate_decision(
     """Injectable pre-LLM seam for exact closed-catalog rate requests."""
     if not _structured_rate_enabled() or not _structured_rate_eligible(question):
         return None
-    from .comparison import (CATALOG_DECLINE_REASONS, _rate_rows, _row_slots,
+    from .comparison import (CATALOG_DECLINE_REASONS, ResponseMode, _rate_rows, _row_slots,
                              _source_bank_labels,
                              merge_elliptical, parse_rate_intent_hybrid,
-                             resolve_rate_rows)
+                             plan_structured_response, resolve_rate_rows)
 
     parsed = parse_rate_intent_hybrid(question)
+    plan = plan_structured_response(question, parsed)
+    if plan is not None:
+        if plan.mode is ResponseMode.CLARIFY:
+            return Decision(
+                Outcome.CLARIFY, plan.message, question=question,
+                reason=DecisionReason.STRUCTURED_PLANNER_CLARIFY,
+                rate_intent=plan.intent, response_plan=plan,
+                trace_flags=frozenset({DecisionEvent.structured_lookup}),
+            )
+        return Decision(
+            None, question=question,
+            reason=DecisionReason.CATALOG_EXACT_HIT,
+            rate_intent=plan.intent, response_plan=plan,
+            trace_flags=frozenset({DecisionEvent.structured_lookup}),
+        )
+
+
     if parsed.status == "not_rate":
         if frame is not None:
             merged = merge_elliptical(question, frame)

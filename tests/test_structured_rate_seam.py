@@ -152,18 +152,16 @@ def test_consumer_credit_interest_is_known_missing_key() -> None:
     assert parsed.intent.metric == "interest_rate"
 
 
-def test_catalog_coverage_miss_falls_through_to_dense(monkeypatch) -> None:
+def test_catalog_coverage_miss_clarifies_without_dense_fallback(monkeypatch) -> None:
     monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
-    monkeypatch.setattr(callcenter, "_analyze_turn", lambda *_a, **_k: None)
-    monkeypatch.setattr(callcenter, "_classify_turn", lambda *_a, **_k: "answer")
-    monkeypatch.setattr(callcenter, "_encode_question", lambda _q: np.ones(1))
-    monkeypatch.setattr(callcenter, "_probe_score", lambda _e: None)
+    monkeypatch.setattr(callcenter, "_analyze_turn", _fail("coverage miss reached router"))
+    monkeypatch.setattr(callcenter, "_encode_question", _fail("coverage miss reached dense"))
     decision = callcenter.decide(
         "A mund te ma rrise banka normen e interesit pasi kam marre kredine?", "", [],
     )
-    assert decision.outcome is None
-    assert decision.query_embedding is not None
-    assert decision.rate_intent is None
+    assert decision.outcome is Outcome.CLARIFY
+    assert decision.reason is callcenter.DecisionReason.STRUCTURED_PLANNER_CLARIFY
+    assert decision.rate_intent is not None
 
 
 def test_unknown_catalog_bank_clarifies_with_known_labels(monkeypatch) -> None:
@@ -502,7 +500,7 @@ _UNREACHABLE_BY_SECTION_6_1 = {
         ("cila banke ofron depozita?", "resolved", None, None, "deposit"),
         ("a ofrojne bankat kredi?", "resolved", None, None, "credit"),
         ("bankat qe ofrojne kredi...", "resolved", None, None, "credit"),
-        ("cilat banka ofrojne kredi me interes te ulet?", "fallthrough", None, None, None),
+        ("cilat banka ofrojne kredi me interes te ulet?", "clarify", None, None, None),
         ("a ofron Banka Interes kredi?", "unknown_bank", None, None, None),
         ("a ofron Banka Xyzzy kredi?", "unknown_bank", None, None, None),
         ("Tarifat e kartes se debitit te BKT ne Shqiperi?", "resolved", "debit_card", "fee", None),
@@ -511,9 +509,9 @@ _UNREACHABLE_BY_SECTION_6_1 = {
         ("krahaso BKT dhe Credins per komisione", "resolved", None, "fee", None),
         ("krahaso BKT dhe Credins per kredi konsumatore dhe kredi per shtepi", "conflicting_slots", None, None, None),
         ("kredi konsumatore per komisione administrimi", "resolved", "consumer_credit_unsecured", "fee", None),
-        ("a ofron Banka AIB karte krediti?", "resolved", "credit_card", None, "card"),
+        ("a ofron Banka AIB karte krediti?", "resolved", None, None, "card"),
         ("a ofron BPI karte debiti?", "resolved", "debit_card", None, "card"),
-        ("cilat jane normat e interesit per kredi konsumatore nga secila banke ne shqiperi?", "fallthrough", None, None, None),
+        ("cilat jane normat e interesit per kredi konsumatore nga secila banke ne shqiperi?", "clarify", None, None, None),
     ),
 )
 def test_hybrid_golden_corpus_at_structured_seam(
@@ -532,6 +530,10 @@ def test_hybrid_golden_corpus_at_structured_seam(
     decision = callcenter._structured_rate_decision(question)
     if expected == "fallthrough":
         assert decision is None
+        return
+    if expected == "clarify":
+        assert decision.outcome is Outcome.CLARIFY
+        assert decision.reason is callcenter.DecisionReason.STRUCTURED_PLANNER_CLARIFY
         return
     if expected in ("unknown_bank", "conflicting_slots"):
         assert decision.outcome is Outcome.CLARIFY

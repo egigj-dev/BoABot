@@ -66,9 +66,9 @@ def test_purpose_qualifier_cannot_authorize_generic_credit_availability(
     monkeypatch.setattr(callcenter, "_probe_score", lambda _e: None)
     monkeypatch.setattr(callcenter, "_account_action_score", lambda _e: None)
     decision = callcenter.decide(question, "", [])
-    assert decision.outcome is None
-    assert decision.reason is callcenter.DecisionReason.DENSE_RETRIEVAL
-    assert decision.rate_intent is None
+    assert decision.outcome is callcenter.Outcome.CLARIFY
+    assert decision.reason is callcenter.DecisionReason.STRUCTURED_PLANNER_CLARIFY
+    assert decision.rate_intent is not None
 
 
 def test_model_reported_coverage_is_advisory(monkeypatch) -> None:
@@ -180,7 +180,7 @@ def test_unrelated_broad_deposit_output_is_unchanged() -> None:
     assert parsed.intent.breadth == "product_metric"
     assert parsed.coverage is not None
     assert parsed.coverage.status is comparison.StructuredIntentStatus.FULL_STRUCTURED_INTENT
-    assert len(comparison.resolve_rate_rows(parsed.intent)) == 15
+    assert len(comparison.resolve_rate_rows(parsed.intent)) == 21
 
 
 @pytest.mark.parametrize(

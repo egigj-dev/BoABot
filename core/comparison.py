@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Generic, Literal, NamedTuple, TypeAlias, TypeVar
 
 from .text_norm import fold
-from .trust import PRICE_INTENT, bank_names as trusted_bank_names, issuer_of
+from .institutions import institution_forms
+from .trust import (NO_EVIDENCE_MESSAGE, PRICE_INTENT, bank_names as trusted_bank_names,
+                    issuer_of)
 
 _RATE_TABLES_PATH = Path(__file__).resolve().parents[1] / "rate_tables.jsonl"
 _BANK_ROW_RE = re.compile(r"^\s*([^:\n]+?)\s*:\s*[-+]?\d")
@@ -69,6 +71,31 @@ class StructuredIntentStatus(Enum):
     INSUFFICIENT_COMPARISON_DIMENSIONS = "insufficient_comparison_dimensions"
 
 
+class ResponseMode(str, Enum):
+    """Backend-authorized conversational mode for a structured request."""
+
+    ANSWER = "answer"
+    ANSWER_AND_FOLLOW_UP = "answer_and_follow_up"
+    CLARIFY = "clarify"
+
+
+@dataclass(frozen=True)
+class ResultComplexity:
+    """Observed structured-result diversity; deliberately not a score."""
+
+    row_count: int
+    bank_count: int
+    product_count: int
+    metric_count: int
+    fee_event_count: int
+    maturity_band_count: int
+    term_count: int
+    amount_band_count: int
+    currency_count: int
+    customer_segment_count: int
+    value_type_count: int
+
+
 class CoverageCertification(NamedTuple):
     """Deterministic proof that a parsed intent covers the material query text."""
 
@@ -104,6 +131,20 @@ class RateIntent(NamedTuple):
     # Narrow structured seam for transfer-fee conversations. The current
     # corpus has no transfer-price rows, so this is dialogue context only.
     transfer_scope: Literal["domestic", "international"] | None = None
+
+@dataclass(frozen=True)
+class ResponsePlan:
+    """Validated response scope, independent from language realization."""
+
+    mode: ResponseMode
+    intent: RateIntent | None
+    known_slots: tuple[str, ...] = ()
+    missing_slots: tuple[str, ...] = ()
+    supported_scope: tuple[str, ...] = ()
+    follow_up_target: tuple[str, ...] = ()
+    complexity: ResultComplexity | None = None
+    message: str = ""
+
 
 
 def _rate_intent_asdict(intent: RateIntent) -> dict:
@@ -421,6 +462,10 @@ def _bank_aliases() -> tuple[tuple[str, str], ...]:
         candidates.update(
             name for name in known
             if re.search(rf"\b{re.escape(name)}\b", folded_label)
+        )
+        candidates.update(
+            form for form, canonical in institution_forms()
+            if fold(canonical) == folded_label
         )
         acronym_words = [word for word in words if word not in _LABEL_CONNECTORS]
         if len(acronym_words) >= 3:
@@ -1379,6 +1424,17 @@ def parse_rate_intent(question: str) -> RateParse:
     if not product_matches:
         family = _resolve_family(product_matches, folded_question)
         if family is None:
+            if len(metric_matches) == 1:
+                provisional = RateIntent(
+                    bank_scope=bank_scope, banks=banks, product=None,
+                    metric=metric_matches[0], fee_event=None, value_type=None,
+                    term_months=None, amount_band=None, breadth="product_metric",
+                    currency=currency, customer_segment=customer_segment,
+                )
+                coverage = certify_semantic_coverage(question, provisional)
+                if coverage.status is StructuredIntentStatus.UNREPRESENTED_SEMANTICS:
+                    return RateParse("unsupported", provisional, "unrepresented_semantics", coverage)
+                return RateParse("unsupported", provisional, "missing_product", coverage)
             return RateParse("unsupported", None, "missing_product")
         if len(metric_matches) != 1:
             return RateParse("unsupported", None, "conflicting_slots")
@@ -1485,7 +1541,8 @@ def parse_rate_intent_hybrid(question: str) -> RateParse:
     lexical = parse_rate_intent(question)
     if lexical.status in ("resolved", "not_rate"):
         return lexical
-    if lexical.reason in ("maturity_band_required", "comparison_dimensions_missing"):
+    if lexical.reason in ("maturity_band_required", "comparison_dimensions_missing",
+                          "missing_product", "missing_key"):
         # Certified CLARIFY declines are terminal: the LLM extractor's closed
         # universe has no business-rate family (band) and no missing-dimension
         # semantics (comparison dims), so it could override a correct CLARIFY
@@ -1513,8 +1570,138 @@ def parse_rate_intent_hybrid(question: str) -> RateParse:
         return RateParse("not_rate", None, "")
     if decline not in _EXTRACT_DECLINES:
         return lexical
+    if lexical.intent is not None:
+        return lexical
     return RateParse("unsupported", None, decline)  # type: ignore[arg-type]  # decline value is validated against the closed reason set
 
+def result_complexity(rows: list[dict]) -> ResultComplexity:
+    """Measure material structured-result diversity without a magic score."""
+    slots = tuple(row["_row_slots"] for row in rows)
+    products = {item.product for item in slots if item.product is not None}
+    metrics = {item.metric for item in slots if item.metric is not None}
+    fee_events = {item.fee_event for item in slots if item.fee_event is not None}
+    maturity_bands = {item.maturity_band for item in slots if item.maturity_band is not None}
+    terms = {item.term_months for item in slots if item.term_months is not None}
+    amount_bands = {item.amount_band for item in slots if item.amount_band is not None}
+    currencies = {row.get("currency") for row in rows if row.get("currency") is not None}
+    segments = {row.get("customer_segment") for row in rows if row.get("customer_segment") is not None}
+    value_types = {item.value_type for item in slots if item.value_type is not None}
+    banks: set[str] = set()
+    for row in rows:
+        for line in row.get("_bank_lines", ()):
+            match = _BANK_ROW_RE.match(line)
+            if match:
+                banks.add(fold(match.group(1).strip()))
+    return ResultComplexity(
+        row_count=len(rows),
+        bank_count=len(banks),
+        product_count=len(products),
+        metric_count=len(metrics),
+        fee_event_count=len(fee_events),
+        term_count=len(terms),
+        maturity_band_count=len(maturity_bands),
+        amount_band_count=len(amount_bands),
+        currency_count=len(currencies),
+        customer_segment_count=len(segments),
+        value_type_count=len(value_types),
+    )
+
+
+
+def _rows_for_missing_product(intent: RateIntent) -> list[dict]:
+    """Find only evidence matching the explicit non-product slots."""
+    if intent.metric is None:
+        return []
+    resolved: list[dict] = []
+    for row in _rate_rows():
+        slots = _row_slots(row)
+        if slots.product is None or slots.metric != intent.metric:
+            continue
+        if intent.currency is not None and row.get("currency") != intent.currency:
+            continue
+        if (intent.customer_segment is not None
+                and row.get("customer_segment") != intent.customer_segment):
+            continue
+        bank_lines = _selected_bank_lines(row, intent.banks)
+        if intent.bank_scope == "named" and not bank_lines:
+            continue
+        if intent.bank_scope == "all" and not bank_lines:
+            continue
+        copy = dict(row)
+        copy["_bank_lines"] = tuple(bank_lines)
+        copy["_row_slots"] = slots
+        resolved.append(copy)
+    return resolved
+
+
+def _follow_up_targets(complexity: ResultComplexity) -> tuple[str, ...]:
+    targets: list[str] = []
+    if (complexity.term_count > 1 or complexity.maturity_band_count > 1
+            or complexity.amount_band_count > 1):
+        targets.append("term_months")
+    if complexity.currency_count > 1:
+        targets.append("currency")
+    if complexity.customer_segment_count > 1:
+        targets.append("customer_segment")
+    return tuple(targets)
+
+_PRODUCT_SCOPE_LABELS = {
+    "consumer_credit_unsecured": "kredi konsumatore pa hipotekë",
+    "consumer_credit_mortgage": "kredi konsumatore me hipotekë",
+    "housing_credit": "kredi për shtëpi",
+    "deposit": "depozita",
+    "debit_card": "karta debiti",
+    "credit_card": "karta krediti",
+}
+
+
+def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan | None:
+    """Choose a response mode from typed slots and observed source diversity."""
+    if parsed.status == "not_rate" or parsed.intent is None:
+        return None
+    intent = parsed.intent
+    known_slots = tuple(name for name, present in (
+        ("bank", bool(intent.banks)), ("product", intent.product is not None),
+        ("metric", intent.metric is not None),
+    ) if present)
+    if parsed.status == "resolved":
+        rows = resolve_rate_rows(intent)
+        if intent.availability:
+            return ResponsePlan(ResponseMode.ANSWER, intent, known_slots)
+        complexity = result_complexity(rows)
+        if not rows:
+            return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots, message=NO_EVIDENCE_MESSAGE)
+        if intent.availability or re.search(r"\bte\s+gjitha\b", fold(question)):
+            return ResponsePlan(ResponseMode.ANSWER, intent, known_slots, complexity=complexity)
+        targets = _follow_up_targets(complexity)
+        if targets and complexity.row_count > 4:
+            return ResponsePlan(ResponseMode.ANSWER_AND_FOLLOW_UP, intent, known_slots,
+                                supported_scope=(str(intent.product),) if intent.product else (),
+                                follow_up_target=targets, complexity=complexity)
+        return ResponsePlan(ResponseMode.ANSWER, intent, known_slots, complexity=complexity)
+    if parsed.reason == "missing_product":
+        rows = _rows_for_missing_product(intent)
+        products = {row["_row_slots"].product for row in rows}
+        if len(products) == 1:
+            product = next(iter(products))
+            scoped = intent._replace(product=product)
+            scoped_rows = resolve_rate_rows(scoped)
+            if scoped_rows:
+                complexity = result_complexity(scoped_rows)
+                mode = (ResponseMode.ANSWER if re.search(r"\bte\s+gjitha\b", fold(question))
+                        else ResponseMode.ANSWER_AND_FOLLOW_UP)
+                return ResponsePlan(mode, scoped, known_slots,
+                                    missing_slots=("product",), supported_scope=(str(product),),
+                                    follow_up_target=() if mode is ResponseMode.ANSWER else (_follow_up_targets(complexity) or ("term_months",)),
+                                    complexity=complexity)
+        return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots, missing_slots=("product",),
+                            message="Për normat e interesit më duhet produkti, sepse të dhënat ndryshojnë sipas produktit.")
+    if parsed.reason == "unrepresented_semantics":
+        return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots,
+                            message="Nuk mund ta lidh me siguri këtë kërkesë me tabelat e publikuara. Mund të tregoni bankën, produktin ose dimensionin që ju intereson?")
+    if parsed.reason == "missing_key":
+        return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots, message=NO_EVIDENCE_MESSAGE)
+    return None
 
 def structured_rate_hits(intent: RateIntent, k: int = 5) -> list[dict]:
     """Return every exact matching row; ``k`` is ignored for complete families."""
@@ -1637,6 +1824,33 @@ def render_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
         )
     return "\n".join(rendered)
 
+
+def render_planned_rate_answer(plan: ResponsePlan, hits: list[dict]) -> str:
+    """Realize an already-authorized concise structured response."""
+    if plan.mode is not ResponseMode.ANSWER_AND_FOLLOW_UP:
+        return render_rate_answer(plan.intent, hits) if plan.intent is not None else ""
+    if not hits or plan.intent is None:
+        return ""
+    intent = plan.intent
+    banks = ", ".join(intent.banks) or "bankat e mbuluara"
+    scope = ", ".join(_PRODUCT_SCOPE_LABELS.get(item, item) for item in plan.supported_scope)
+    metric = "norma të publikuara" if intent.metric == "interest_rate" else "tarifa të publikuara"
+    complexity = plan.complexity
+    variation = ""
+    follow_up = ""
+    if "term_months" in plan.follow_up_target:
+        variation = " Ato ndryshojnë sipas afatit"
+        if complexity is not None and complexity.amount_band_count > 1:
+            variation += " dhe shumës"
+        variation += "."
+        follow_up = " Cili afat ju intereson?"
+    elif "currency" in plan.follow_up_target:
+        variation = " Ato ndryshojnë sipas monedhës."
+        follow_up = " Për cilën monedhë po pyesni?"
+    elif "customer_segment" in plan.follow_up_target:
+        variation = " Ato ndryshojnë sipas segmentit të klientit."
+        follow_up = " Për individë apo biznese?"
+    return f"Për {banks} kam {metric} për {scope}.{variation}{follow_up}"
 
 def _render_business_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
     """Render the business nominal/NEI table as reported (rule 5: no kredi).

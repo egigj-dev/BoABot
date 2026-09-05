@@ -671,9 +671,13 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             sources[item["id"]] = item
 
         if rate_intent is not None:
-            from .comparison import render_rate_answer
+            from .comparison import render_planned_rate_answer, render_rate_answer
 
-            answer = render_rate_answer(rate_intent, hits)
+            response_plan = getattr(decision, "response_plan", None)
+            answer = (
+                render_planned_rate_answer(response_plan, hits)
+                if response_plan is not None else render_rate_answer(rate_intent, hits)
+            )
             if not answer:
                 abstain_reason = "structured_rate_empty_render"
                 outcome = Outcome.UNSUPPORTED
@@ -687,7 +691,9 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 yield emit({"type": "token", "text": answer})
                 yield emit({"type": "approved_sentence", "text": answer})
                 outcome = Outcome.ANSWER
-                handoff_reason = DecisionReason.CATALOG_EXACT_HIT.value
+                handoff_reason = (
+                    DecisionReason.STRUCTURED_ANSWER_AND_FOLLOW_UP.value
+                    if getattr(response_plan, "mode", None) and response_plan.mode.value == "answer_and_follow_up" else DecisionReason.CATALOG_EXACT_HIT.value)
             sessions.record(session, decision.question, answer, outcome)
             yield done_event(
                 outcome, sources=list(sources.values()),
