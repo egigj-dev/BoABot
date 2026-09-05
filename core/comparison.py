@@ -12,6 +12,7 @@ from typing import Generic, Literal, NamedTuple, TypeAlias, TypeVar
 
 from .text_norm import fold
 from .institutions import institution_forms
+from .business_rate_attribution import BUSINESS_RATE_ATTRIBUTION, BUSINESS_RATE_SOURCE_DIMENSIONS
 from .trust import (NO_EVIDENCE_MESSAGE, PRICE_INTENT, bank_names as trusted_bank_names,
                     issuer_of)
 
@@ -393,6 +394,8 @@ def _rate_rows() -> tuple[dict, ...]:
             # Currency-specific pages will carry their own materialized value.
             row.setdefault("currency", None)
             row["_id"] = f"rate_{index:04d}"
+            if index in BUSINESS_RATE_ATTRIBUTION:
+                row["business_rate"] = {**BUSINESS_RATE_SOURCE_DIMENSIONS, **BUSINESS_RATE_ATTRIBUTION[index]}
             rows.append(row)
     return tuple(rows)
 
@@ -833,13 +836,19 @@ def _row_slots(row: dict) -> RowSlots:
     business_size: BusinessSize | None = None
     rate_component: RateComponent | None = None
     if _BUSINESS_SOURCE_MARK in source:
-        for size, phrases in BUSINESS_SIZE_TERMS.items():
-            if any(_has_term(category, phrase) for phrase in phrases):
-                business_size = size
-                break
-        # The table header names both components; the scraped rows do not
-        # attribute individual values to one column, so a row NEVER carries a
-        # concrete rate_component (metric asks stay parse-only, never claimed).
+        metadata = row.get("business_rate")
+        if isinstance(metadata, dict):
+            business_size = metadata.get("business_size")
+            band = metadata.get("maturity_band")
+            if isinstance(band, tuple) and len(band) == 2:
+                maturity_band = band
+                term_months = band[1]
+            rate_component = "nominal_rate"
+        else:
+            for size, phrases in BUSINESS_SIZE_TERMS.items():
+                if any(_has_term(category, phrase) for phrase in phrases):
+                    business_size = size
+                    break
     return RowSlots(product, metric, fee_event, value_type, term_months,
                     amount_band, business_size, rate_component, maturity_band)
 
@@ -873,13 +882,18 @@ def resolve_rate_rows(intent: RateIntent) -> list[dict]:
                 continue
             if intent.maturity_band is not None and slots.maturity_band != intent.maturity_band:
                 continue
-            # Junk sub-header rows (category repeats, no numeric value) never
-            # resolve — they carry no claimable figure.
-            if not any(_BUSINESS_VALUE_LINE_RE.match(line)
-                       for line in str(row.get("text") or "").splitlines()[1:]):
+            metadata = row.get("business_rate")
+            if not isinstance(metadata, dict):
+                continue
+            bank_values = tuple(metadata.get("bank_values") or ())
+            if intent.bank_scope == "named":
+                selected = {fold(bank) for bank in intent.banks}
+                bank_values = tuple((bank, value) for bank, value in bank_values
+                                    if fold(str(bank)) in selected)
+            if not bank_values:
                 continue
             copy = dict(row)
-            copy["_bank_lines"] = ()
+            copy["_bank_lines"] = tuple(f"{bank}: {value}" for bank, value in bank_values)
             copy["_row_slots"] = slots
             resolved.append(copy)
         return resolved
@@ -1867,10 +1881,9 @@ def _render_business_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
         article = str(hit.get("article") or "")
         category, _sep, item = article.partition(" — ")
         for line in str(hit.get("text") or "").splitlines()[1:]:
-            match = _BUSINESS_VALUE_LINE_RE.match(line.strip())
-            if not match:
+            if not _BANK_ROW_RE.match(line.strip()):
                 continue
-            value = match.group(1).strip()
+            value = line.strip()
             key = (category, item)
             values = grouped.setdefault(key, [])
             if value not in values:
@@ -1888,9 +1901,8 @@ def _render_business_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
             label = label.replace(src, dst)
         lines.append(f"{label} — {item}: {', '.join(grouped[key])}")
     lines.append(
-        "Shifrat janë norma përqindjeje të raportuara nga Banka e Shqipërisë; "
-        "tabela e publikuar nuk i atribuon çdo shifër normës nominale apo NEI-së "
-        "apo një banke të caktuar."
+        "Shifrat janë transkriptuar nga tabela e Bankës së Shqipërisë "
+        "OVERDRAFT në lekë, seksioni Nominale Fikse, duke ruajtur bankën përkatëse."
     )
     return "\n".join(lines)
 

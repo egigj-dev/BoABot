@@ -45,7 +45,7 @@ def test_rule1_explicit_band_resolves_and_answers() -> None:
     rendered = render_rate_answer(intent, hits)
     assert "13-24 muaj" in rendered
     assert "8.00" in rendered  # the reported band values
-    assert "9.00" in rendered
+    assert "Banka e Bashkuar e Shqipërisë" in rendered
 
 
 def test_rule1_alternate_wording_resolves() -> None:
@@ -99,17 +99,17 @@ def test_rule5_metric_component_parsed_but_never_claimed() -> None:
     assert parsed.intent.rate_component == "nominal_rate"
     hits = structured_rate_hits(parsed.intent)
     rendered = render_rate_answer(parsed.intent, hits)
-    # The scraped rows do not attribute values to nominal vs NEI; the renderer
-    # shows the band values as reported and states that boundary in the note.
+    # The repaired source lineage preserves the bank and source section.
     assert "8.00" in rendered
-    assert "nuk i atribuon çdo shifër" in rendered
+    assert "Nominale Fikse" in rendered
 
 
-def test_medium_business_has_no_numeric_rows_missing_key() -> None:
+def test_medium_business_rows_retain_source_attribution() -> None:
     parsed = parse_rate_intent(
         "Cilat jane normat e biznesit te mesem me maturitet 13-24 muaj")
-    assert parsed.status == "unsupported", parsed
-    assert parsed.reason == "missing_key", parsed  # honest — no numeric medium rows
+    assert parsed.status == "resolved", parsed
+    rendered = render_rate_answer(parsed.intent, structured_rate_hits(parsed.intent))
+    assert "Banka e Bashkuar e Shqipërisë" in rendered
 
 
 def test_hybrid_keeps_deterministic_clarify(monkeypatch) -> None:
