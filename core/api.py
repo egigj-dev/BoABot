@@ -99,6 +99,12 @@ def _is_near_duplicate(sentence: str, prior_embedding, threshold: float = NO_REP
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from .env import feature_flag_states
+
+    logger.info(
+        "effective feature flags: %s",
+        ", ".join(f"{name}={'ON' if enabled else 'OFF'}" for name, enabled in feature_flag_states().items()),
+    )
     open_retrieval_pool()
     warmup_retrieval()
     try:
