@@ -1526,11 +1526,14 @@ def _business_rate_parse(
     business_size = _business_size_of(folded_question)
     rate_component = _rate_component_of(folded_question)
     maturity_band = _maturity_band_of(folded_question)
+    bank_scope, banks, bank_error = _bank_scope(folded_question)
+    if bank_error:
+        return RateParse("unsupported", None, bank_error)
     explicit_all = re.search(r"\bte\s+gjitha\b", folded_question) is not None
     mesatar = "mesatar" in folded_question
 
     intent = RateIntent(
-        bank_scope="all", banks=(), product=None, metric="interest_rate",
+        bank_scope=bank_scope, banks=banks, product=None, metric="interest_rate",
         fee_event=None, value_type=None, term_months=None, amount_band=None,
         breadth="product_metric", family=BUSINESS_FAMILY,
         currency=currency, customer_segment=customer_segment or "business",
