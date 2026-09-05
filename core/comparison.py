@@ -279,10 +279,6 @@ _UNKNOWN_BANK_STOP = frozenset({
     "te", "gjitha", "nga", "ne", "per", "dhe", "e", "shqiperi",
     "shqipari", "me", "nje", "tjera", "tjerat", "tjetra", "tjeter",
 })
-_CERTIFIABLE_BANK_ALIASES = {
-    "aib": "Banka Amerikane e Investimeve Shqiperi",
-    "bpi": "Banka e Parë e Investimeve Albania",
-}
 
 # Closed, precision-oriented forms used only for semantic certification. The
 # recall matcher above intentionally remains permissive (`term\w*`), but a
@@ -604,10 +600,6 @@ def certify_semantic_coverage(
     _named, bank_spans = _named_banks(folded_question)
     for start, end in bank_spans:
         consume_span(start, end, folded_question[start:end])
-
-    for alias, bank in _CERTIFIABLE_BANK_ALIASES.items():
-        if bank in intent.banks:
-            consume_exact((alias,))
 
     if intent.term_months is not None:
         consumed_term = False

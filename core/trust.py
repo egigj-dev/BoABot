@@ -14,6 +14,7 @@ from urllib.parse import unquote
 
 from .text_norm import fold
 
+from .institutions import INSTITUTION_REGISTER_SOURCE, institution_match_terms, resolve_institutions
 MIN_RELEVANCE_SCORE = 0.50
 PRICE_INTENT = ("sa esht", "sa eshte", "sa kushton", "sa paguaj", "cfare tarife",
                 "sa me kushton")
@@ -43,45 +44,10 @@ _RATE_LABEL_RE = re.compile(r"^\s*([^:\n]+?)\s*:\s*[-+]?\d")
 
 @lru_cache(maxsize=1)
 def bank_names() -> tuple[str, ...]:
-    """Load commercial-bank identity tokens from the rate corpus.
-
-    The Bank of Albania is the regulator, not a commercial provider of quotable
-    tariffs; geographic qualifiers are not institution identities.
-    """
-    names = set()
-    path = Path(__file__).resolve().parents[1] / "rate_tables.jsonl"
-    with path.open(encoding="utf-8") as rate_file:
-        for line in rate_file:
-            text = json.loads(line)["text"]
-            for data_line in text.splitlines():
-                match = _RATE_LABEL_RE.match(data_line)
-                if not match:
-                    continue
-                source_label = match.group(1).strip()
-                label = fold(source_label)
-                if ("banka e shqiperis" in label
-                        or label in _NON_INSTITUTION_RATE_LABELS):
-                    continue
-                for source_token in source_label.split():
-                    token = fold(source_token)
-                    if ((len(token) >= 4
-                            or len(token) >= 3 and source_token.isupper())
-                            and token not in _BANK_NAME_STOPLIST
-                            and not token.startswith(_BANK_NAME_STOP_PREFIXES)):
-                        names.add(token)
-    return tuple(sorted(names))
+    """Compatibility accessor for canonical institution matching forms."""
+    return institution_match_terms()
 
 
-# Provenance for zero-retrieval institution facts (e.g. the bank-catalog list
-# answer "Cilat jane bankat ne shqiperi?"). Identity-only: the register declares
-# WHICH institutions are licensed; it is never product-availability evidence.
-INSTITUTION_REGISTER_SOURCE: dict[str, object] = {
-    "id": "boa-licensed-institutions",
-    "doc": "Banka e Shqipërisë — Subjektet e licencuara",
-    "title": "Regjistri i subjekteve të licencuara — Banka e Shqipërisë",
-    "url": "https://www.bankofalbania.org/Mbikeqyrja/Subjekte_te_licencuara/",
-    "as_of": None,  # no fabricated date; BoA updates the register continuously
-}
 
 
 @lru_cache(maxsize=1)
@@ -142,8 +108,7 @@ def issuer_of(hit_id: str, text: str = "") -> str:
     if str(hit_id).startswith("rate_"):
         if not isinstance(text, str) or not text:
             return "tabela e tarifave te bankave"
-        folded_text = fold(text)
-        matches = [name for name in bank_names() if name in folded_text]
+        matches = resolve_institutions(text)
         if len(matches) == 1:
             return matches[0]
         return "bankat e tarifat komerciale" if matches else "tabelat e tarifave"
@@ -178,8 +143,11 @@ def trusted_hits(query: str, hits: list[dict[str, Any]]) -> GateResult:
 
     folded = fold(query)
     names_institution = bool(_bank_name_re().search(folded))
-    asks_price = any(term in folded for term in (
-        *PRICE_INTENT, "komision", "tarif", "norme interesi", "norma e interesit",
+    asks_regulatory_rule = any(term in folded for term in (
+        "rregullor", "ligj", "neni", "mbikeqyr",
+    ))
+    asks_price = not asks_regulatory_rule and any(term in folded for term in (
+        *PRICE_INTENT, "komision", "tarif", "norm", "interes",
     ))
     if names_institution and asks_price and not any(
         str(hit.get("id", "")).startswith("rate_") for hit in accepted
