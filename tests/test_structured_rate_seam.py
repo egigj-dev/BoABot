@@ -356,11 +356,12 @@ def test_parse_availability_named_banks_resolves_offer() -> None:
     assert parsed.intent is not None
     assert parsed.intent.availability is True
     assert parsed.intent.family == "consumer_credit"
-    offers = comparison.resolve_availability(parsed.intent)
+    offers = comparison.published_product_terms(parsed.intent)
     assert offers
     assert all(offers[b] for b in parsed.intent.banks)
     rendered = comparison.render_availability_answer(parsed.intent)
-    assert "ofron kredi konsumatore" in rendered
+    assert "ka të dhëna të publikuara për kredi konsumatore" in rendered
+    assert "ofron" not in rendered
 
 
 def test_parse_availability_bare_kredi_family() -> None:
@@ -571,7 +572,7 @@ def test_card_availability_is_scoped_to_extracted_product(monkeypatch, question,
         pytest.xfail(
             "§6.1 returns the lexical card-union intent before extraction for this row"
         )
-    offers = comparison.resolve_availability(parsed.intent)
+    offers = comparison.published_product_terms(parsed.intent)
     if any(offers.values()):
         pytest.xfail(
             "the unchanged resolver keys availability by family='card' and ignores "

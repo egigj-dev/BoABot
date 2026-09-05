@@ -189,7 +189,7 @@ def _coerce_rate_intent(value):
 
 def structured_verdict(intent, hits) -> tuple[str, str]:
     """Validate a typed exact resolution without trusting its source tag alone."""
-    from .comparison import _row_slots, resolve_availability, resolve_rate_rows
+    from .comparison import _row_slots, published_product_terms, resolve_rate_rows
 
     typed_intent = _coerce_rate_intent(intent)
     if typed_intent is None and hits:
@@ -199,9 +199,10 @@ def structured_verdict(intent, hits) -> tuple[str, str]:
     if any(hit.get("retrieval_source") != "structured_rate" for hit in hits):
         return "UNSUPPORTED", "structured_rate_mixed_evidence"
 
-    # Yes/no availability: the whole verdict is corpus membership, deterministic.
+    # A caller may ask about availability, but these rows establish only that
+    # published terms exist; the renderer preserves that evidence scope.
     if typed_intent.availability:
-        offers = resolve_availability(typed_intent)
+        offers = published_product_terms(typed_intent)
         if not offers or not hits:
             return "UNSUPPORTED", "structured_rate_missing_key"
         if len(hits) != len(offers):
@@ -209,7 +210,7 @@ def structured_verdict(intent, hits) -> tuple[str, str]:
         for hit in hits:
             if hit.get("rate_resolution") != typed_intent._asdict():
                 return "UNSUPPORTED", "structured_rate_untrusted_metadata"
-        return "SUPPORTED", "structured_rate_availability"
+        return "SUPPORTED", "structured_published_product_terms"
 
     expected_rows = resolve_rate_rows(typed_intent)
     if not expected_rows or not hits:

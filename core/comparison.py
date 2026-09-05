@@ -928,12 +928,11 @@ def resolve_rate_rows(intent: RateIntent) -> list[dict]:
     return resolved
 
 
-def resolve_availability(intent: RateIntent) -> dict[str, bool]:
-    """Return {canonical_bank_label: offers_family} for an availability ask.
+def published_product_terms(intent: RateIntent) -> dict[str, bool]:
+    """Return {canonical_bank_label: has_published_terms} for an availability ask.
 
-    A bank offers a family if any corpus row whose product belongs to the
-    family's product set carries a line for that bank. Purely corpus-driven —
-    identical output for a re-issued intent.
+    A matching corpus row establishes published product terms only; it does
+    not establish current real-time availability for every customer.
     """
     if not intent.availability:
         return {}
@@ -1735,13 +1734,13 @@ def structured_rate_hits(intent: RateIntent, k: int = 5) -> list[dict]:
 
 def structured_availability_hits(intent: RateIntent) -> list[dict]:
     """One deterministic hit per requested bank for a yes/no availability ask."""
-    offers = resolve_availability(intent)
+    offers = published_product_terms(intent)
     family = intent.family or ""
     hits: list[dict] = []
     for index, bank in enumerate(intent.banks):
         offers_family = bool(offers.get(bank, False))
         hit_id = f"avail_{intent.family}_{index:03d}"
-        text = f"{bank}\n{family}: {'PO' if offers_family else 'JO'}"
+        text = f"{bank}\n{family}: {'TERMA_TE_PUBLIKUARA' if offers_family else 'PA_TERMA_TE_PUBLIKUARA'}"
         hits.append({
             "id": hit_id,
             "text": text,
@@ -1751,7 +1750,7 @@ def structured_availability_hits(intent: RateIntent) -> list[dict]:
             "issuer": issuer_of(hit_id, text),
             "retrieval_source": "structured_rate",
             "rate_resolution": intent._asdict(),
-            "rate_row_slots": {"product": None, "offers_family": offers_family},
+            "rate_row_slots": {"product": None, "has_published_terms": offers_family},
         })
     return hits
 
@@ -1767,16 +1766,16 @@ _FAMILY_LABELS = {
 
 
 def render_availability_answer(intent: RateIntent) -> str:
-    """Render a yes/no per-bank availability verdict straight from the corpus."""
-    offers = resolve_availability(intent)
+    """Render published-term evidence without claiming real-time availability."""
+    offers = published_product_terms(intent)
     family_label = _FAMILY_LABELS.get(intent.family or "", intent.family or "")
     lines: list[str] = []
     for bank in intent.banks:
         offer = offers.get(bank, False)
         if offer:
-            lines.append(f"{bank}: ofron {family_label}.")
+            lines.append(f"{bank}: ka të dhëna të publikuara për {family_label}.")
         else:
-            lines.append(f"{bank}: nuk ka të dhëna për {family_label}.")
+            lines.append(f"{bank}: nuk gjeta të dhëna të publikuara për {family_label}.")
     return "\n".join(lines)
 
 
