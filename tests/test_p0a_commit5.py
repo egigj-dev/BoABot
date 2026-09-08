@@ -197,6 +197,84 @@ def test_bare_term_without_old_term_still_requires_full_certification(router_off
     assert coverage.unresolved_qualifiers == ()
 
 
+def test_non_slot_reply_does_not_merge_into_carried_missing_key_frame(router_off) -> None:
+    """Task AI: a non-slot-bearing reply must not bind onto the carried
+    missing_key frame. With the router off, decide() falls through to
+    DENSE_RETRIEVAL for 'nuk e di' even with the frame present — never a rate
+    refusal. The live catalog_missing_key for this reply comes from the
+    api-layer rewrite path (see the API test below), not from the frame merge;
+    this pins the seam so a greedier merge cannot silently re-introduce a
+    refusal at this layer."""
+    parsed = comparison.parse_rate_intent(
+        "cila banke ka normen me te mire per kredi konsumatore?",
+    )
+    assert parsed.status == "unsupported" and parsed.reason == "missing_key"
+    frame = parsed.intent
+
+    decision = callcenter.decide(
+        "nuk e di", "", [], last_structured_frame=frame,
+    )
+
+    assert decision.reason is callcenter.DecisionReason.DENSE_RETRIEVAL
+    assert decision.rate_intent is None
+
+
+def test_api_non_slot_reply_after_missing_key_clarify_is_terminal_refusal(
+        router_off, monkeypatch) -> None:
+    """Task AI regression: 'nuk e di' after a missing_key clarify.
+
+    Pre-AD (0a3e8b8): this reply surfaced as semantic_clarify — no rewrite,
+    no rate refusal. Post-AD the T1 clarify text names the missing dimension
+    ("monedha ... Për cilën monedhë po pyesni?"), and the keyed LLM rewrite
+    expands the non-answer into a rate-shaped standalone ("...pavarësisht
+    monedhës?"). The post-rewrite reparse (api.py _structured_rate_decision)
+    then forces that query into the 0-row structured seam -> retrieve_evidence
+    refuses -> catalog_missing_key terminal. The frame merge itself is clean;
+    the coupling is message-text -> rewrite -> reparse.
+
+    Pins the CURRENT observed contract (unsupported/catalog_missing_key, and
+    never 'answer') so any fix (Task AJ #4/AF) or further change to this
+    reply shape is a visible diff rather than a silent suite-green change.
+    """
+    store = callcenter.SessionStore()
+    monkeypatch.setattr(api, "sessions", store)
+    monkeypatch.setattr(api, "needs_rewrite", lambda *_a, **_k: True)
+    monkeypatch.setattr(api, "rewrite", lambda _q, _h: (
+        "Cila bankë në Shqipëri ofron normën më të mirë të interesit "
+        "për kredi konsumatore pa hipotekë, pavarësisht monedhës?"
+    ))
+
+    def _retrieve(query, *_a, rate_intent=None, **_k):
+        hits = (
+            comparison.structured_rate_hits(rate_intent)
+            if rate_intent else []
+        )
+        refusal = (
+            callcenter.NO_EVIDENCE_MESSAGE if (rate_intent and not hits) else ""
+        )
+        return (hits, refusal)
+
+    monkeypatch.setattr(api, "retrieve_evidence", _retrieve)
+    client = TestClient(api.app)
+
+    r1 = _done(client.post("/turn", json={
+        "question": "cila banke ka normen me te mire per kredi konsumatore?",
+    }))
+    assert r1["outcome"] == "clarify"
+    assert r1["reason"] == "structured_planner_clarify"
+
+    r2 = _done(client.post("/turn", json={
+        "question": "nuk e di",
+        "session_id": r1["session_id"],
+    }))
+    assert r2["outcome"] == "unsupported"
+    assert r2["reason"] == "catalog_missing_key"
+    assert r2["outcome"] != "answer"  # safety invariant: never a cited answer
+    # (trace_flags on the done event is BOABOT_DEBUG-gated; the rewrite firing
+    # is already proven — api.rewrite is pinned, and without it T2 would have
+    # gone dense, not catalog_missing_key.)
+
+
 def _api_setup(monkeypatch):
     store = callcenter.SessionStore()
     monkeypatch.setattr(api, "sessions", store)
