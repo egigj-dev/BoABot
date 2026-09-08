@@ -961,7 +961,7 @@ _TRANSFER_REGULATORY_RE = re.compile(
     r"\b(?:rregull\w*|publik\w*|transparenc\w*|detyrim\w*)\b", re.I,
 )
 _TRANSFER_PROCEDURE_RE = re.compile(
-    r"\b(?:si\s+(?:mund|behet)|cfare\s+duhet|procedur\w*|dokument\w*)\b",
+    r"\b(?:si\s+(?:mund|behet)|cfare\s+duhet|procedur\w*|proces\w*|dokument\w*)\b",
     re.I,
 )
 _TRANSFER_OTHER_PRODUCT_RE = re.compile(
