@@ -129,3 +129,45 @@ def test_done_payload_omits_trace_flags_without_debug(monkeypatch) -> None:
 
     assert done["outcome"] == "answer"
     assert "trace_flags" not in done
+
+
+def test_done_payload_carries_abstain_reason_with_debug(monkeypatch) -> None:
+    # The answerability abstain reason (e.g. structured_rate_missing_key,
+    # abstain_llm_judgment) must reach the SSE done event under
+    # BOABOT_DEBUG=1, so a transcript's failures are distinguishable by
+    # cause instead of one generic abstain.
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    monkeypatch.setenv("BOABOT_DEBUG", "1")
+    _store, client = _api_setup(monkeypatch)
+    monkeypatch.setattr(api, "needs_rewrite", lambda *_a, **_k: False)
+    # Force the answerability gate to abstain deterministically (no LLM key
+    # needed): the structured hits are present, judge() says UNSUPPORTED.
+    monkeypatch.setattr(
+        api, "judge",
+        lambda *_a, **_k: ("UNSUPPORTED", "abstain_llm_judgment"),
+    )
+
+    done = _done(client.post("/turn", json={
+        "question": "Komisioni administrimit perqindje per kredi konsumatore te BKT",
+    }))
+
+    assert done["outcome"] == "unsupported"
+    assert done.get("abstain_reason") == "abstain_llm_judgment"
+
+
+def test_done_payload_omits_abstain_reason_without_debug(monkeypatch) -> None:
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    monkeypatch.delenv("BOABOT_DEBUG", raising=False)
+    _store, client = _api_setup(monkeypatch)
+    monkeypatch.setattr(api, "needs_rewrite", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        api, "judge",
+        lambda *_a, **_k: ("UNSUPPORTED", "abstain_llm_judgment"),
+    )
+
+    done = _done(client.post("/turn", json={
+        "question": "Komisioni administrimit perqindje per kredi konsumatore te BKT",
+    }))
+
+    assert done["outcome"] == "unsupported"
+    assert "abstain_reason" not in done

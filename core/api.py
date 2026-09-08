@@ -526,6 +526,11 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
             event["trace_flags"] = sorted(
                 flag.value for flag in (decision.trace_flags if decision else ())
             )
+            # Step 0 visibility: the answerability abstain reason (e.g.
+            # abstain_llm_judgment, structured_rate_missing_key) is computed
+            # in this scope by judge() but never reached the SSE stream —
+            # every failure looked like one undifferentiated abstain.
+            event["abstain_reason"] = abstain_reason
         return emit(event)
 
     def emit_policy_message(message: str):
