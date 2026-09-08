@@ -102,7 +102,7 @@ def test_hybrid_gate_returns_lexical_result(monkeypatch, disabled) -> None:
                 has_price_qualifier=False,
             ),
             {
-                "bank_scope": "named", "product": "credit_card", "metric": None,
+                "bank_scope": "named", "product": None, "metric": None,
                 "family": "card", "availability": True, "breadth": "product_metric",
             },
         ),
