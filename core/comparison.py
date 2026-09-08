@@ -1753,6 +1753,59 @@ def _category_enumeration(
     return enumerated
 
 
+# Albanian labels for the dimensions that identify a rate row. Used by the
+# missing_key clarify to ask for what is missing by name — mirroring the
+# comparison-dimensions vocabulary, so caller and assistant share terms.
+_MISSING_KEY_DIMENSION_LABELS = {
+    "currency": "monedhën",
+    "term_months": "afatin (në muaj)",
+    "amount_band": "shumën (minimal/maksimal)",
+    "customer_segment": "segmentin (individë apo biznese)",
+    "fee_event": "llojin e komisionit",
+    "loan_type": "llojin e kredisë (konsumatore, shtëpi/hipotekare, biznes)",
+}
+
+
+def _missing_key_message(intent: RateIntent) -> str:
+    """One-or-two-sentence clarify for a resolved-but-unresolvable intent.
+
+    missing_key means the slots are fully consumed yet no row key can be
+    found. Where the missing key is one of the known comparison dimensions,
+    ask for it by name (the intent may carry a product label to anchor the
+    ask). If nothing a dimension would resolve is enumerable, the message
+    still asks a question — never the NO_EVIDENCE_MESSAGE, which rendered a
+    refusal and made every slot reply a terminal dead end (Step 12 AB).
+    """
+    if intent.metric is not None:
+        required = _REQUIRED_COMPARISON_DIMENSIONS.get(intent.metric, ())
+        missing = [
+            _MISSING_KEY_DIMENSION_LABELS[d] for d in required
+            if getattr(intent, d) is None
+        ]
+    else:
+        missing = []
+    known = []
+    if intent.product is not None:
+        known.append(_PRODUCT_SCOPE_LABELS.get(intent.product, intent.product))
+    elif intent.family:
+        known.append(intent.family)
+    known_part = (f" për {known[0]}" if known else "")
+    if missing:
+        if len(missing) == 1:
+            ask = f"Më duhet {missing[0]}{known_part}. Cilin {missing[0].rsplit(' ', 1)[-1]} po pyesni?"
+        else:
+            ask = (f"Më duhet {', '.join(missing)}{known_part}. "
+                   f"Cilen prej tyre po pyesni?")
+    else:
+        # Fully consumed intent but no rows: state the boundary rather than
+        # a refusal, and offer the way forward.
+        ask = (
+            "Më duhet një dimension të saktë (bankë, banka apo afat) që tabelat "
+            "e publikuara ta njoh. Cilin po pyesni?"
+        )
+    return ask
+
+
 def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan | None:
     """Choose a response mode from typed slots and observed source diversity."""
     if parsed.status == "not_rate" or parsed.intent is None:
@@ -1823,7 +1876,14 @@ def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan |
         return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots,
                             message=message)
     if parsed.reason == "missing_key":
-        return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots, message=NO_EVIDENCE_MESSAGE)
+        # A resolved-but-unresolvable intent: the clarify must ask what is
+        # missing (matching the missing_product / unrepresented siblings),
+        # never render the NO_EVIDENCE_MESSAGE as a CLARIFY — that refusals
+        # and every slot reply became a terminal dead end (Step 12 AB).
+        return ResponsePlan(
+            ResponseMode.CLARIFY, intent, known_slots,
+            message=_missing_key_message(intent),
+        )
     return None
 
 def structured_rate_hits(intent: RateIntent, k: int = 5) -> list[dict]:

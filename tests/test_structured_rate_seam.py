@@ -779,3 +779,28 @@ def test_card_availability_is_scoped_to_extracted_product(monkeypatch, question,
             "the extracted debit_card/credit_card product"
         )
     assert offers == {parsed.intent.banks[0]: False}
+
+
+# ---- Task AD: missing_key clarify asks what is missing (never refuses) ----
+# A missing_key CLARIFY that renders NO_EVIDENCE_MESSAGE leaves the user with
+# no question to answer; every slot reply then terminally refuses (Step 12 AB).
+# The branch must ask for the missing dimension by name and never fall back to
+# the refusal message.
+@pytest.mark.parametrize("question", [
+    "cila banke ka normen me te mire per kredi konsumatore?",
+    "cilat jane normat e interesit per kredi konsumatore?",
+])
+def test_missing_key_clarify_asks_for_the_missing_dimension(question) -> None:
+    parsed = comparison.parse_rate_intent(question)
+    assert parsed.status == "unsupported"
+    assert parsed.reason == "missing_key"
+    plan = comparison.plan_structured_response(question, parsed)
+    assert plan is not None
+    assert plan.mode is comparison.ResponseMode.CLARIFY
+    assert plan.message and plan.message not in (
+        comparison.NO_EVIDENCE_MESSAGE, "",  # never the refusal-as-clarify
+    )
+    assert plan.message.rstrip().endswith("?")
+    # names at least the missing dimension (voice-safe: some 'më duhet ...')
+    assert "Më duhet" in plan.message
+    assert "Nuk gjeta burim mjaftueshëm" not in plan.message
