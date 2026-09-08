@@ -177,7 +177,12 @@ def test_business_renderer_states_attribution_boundary() -> None:
     assert parsed.status == "resolved", parsed
     assert parsed.intent is not None
     rendered = render_rate_answer(parsed.intent, structured_rate_hits(parsed.intent))
-    assert "nuk i atribuon çdo shifër normës nominale apo NEI-së" in rendered
+    # The renderer discloses the attribution boundary explicitly (reworded
+    # after the b05d53f-era phrasing "nuk i atribuon çdo shifër normës
+    # nominale apo NEI-së"): values are transcriptions of the BoA OVERDRAFT
+    # table's Nominale Fikse section, preserving the per-bank source.
+    assert "Shifrat janë transkriptuar nga tabela e Bankës së Shqipërisë" in rendered
+    assert "OVERDRAFT" in rendered
     assert "kredi" not in rendered.lower()
 
 
