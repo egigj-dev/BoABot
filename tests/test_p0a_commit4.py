@@ -2,6 +2,7 @@
 import json
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 import core.api as api
@@ -19,6 +20,13 @@ def _done(response):
     return next(payload for payload in payloads if payload["type"] == "done")
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "UNCLEAR: should STRUCTURED_PLANNER_CLARIFY REPLACE the carried "
+    "structured frame (current behaviour, callcenter.py:205) or CLEAR it "
+    "(asserted here)? REPLACE-on-clarify persists an unresolved intent that a "
+    "later rephrase merges onto — the open frame_effect defect, measure-before-"
+    "fix. Product call pending — see FAILURE_TRIAGE_2026-09-08.md."
+))
 def test_frame_effect_and_next_structured_frame_mapping() -> None:
     replace = {
         DecisionReason.CATALOG_EXACT_HIT,

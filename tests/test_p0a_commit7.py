@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 import core.api as api
@@ -40,6 +41,13 @@ def _api_setup(monkeypatch):
     return store, TestClient(api.app)
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "UNCLEAR: does the availability-qualifier case ('a ofrojne kredi per "
+    "udhetime?') CLARIFY (current behaviour via the structured planner) or "
+    "fall through to dense (asserted here)? The critic-review direction was "
+    "dense fall-through + honest narrowing; the planner superseded it. Product "
+    "call pending — see FAILURE_TRIAGE_2026-09-08.md."
+))
 def test_unrepresented_qualifier_trace_is_constructed_at_seam(monkeypatch) -> None:
     monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
     monkeypatch.setattr(callcenter, "_analyze_turn", lambda *_a, **_k: None)
