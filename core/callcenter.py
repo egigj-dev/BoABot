@@ -1196,6 +1196,66 @@ def _structured_rate_eligible(question: str) -> bool:
     )
 
 
+_DEICTIC_WHICH_BANK_RE = re.compile(
+    r"\b(?:per\s+)?cil[ae]n?\s+bank\w*\b.*\bfjale\b", re.I,
+)
+_DEICTIC_WHICH_BANK_RE2 = re.compile(r"\b(?:cil[ae]|per\s+cil[ae]n?)\s+bank\w*\b", re.I)
+_DEICTIC_WHICH_BANK_TAIL_RE = re.compile(r"\bfjale\b|\bparaske\b", re.I)
+
+
+def _deictic_bank_scope_preflight(
+        question: str, frame: RateIntent | None,
+        ) -> Decision | None:
+    """Deictic \"which bank\" question right after a structured listing.
+
+    \"per cilen banke behet fjale?\" / \"cila banke e ka?\" after a rate/
+    deposit listing is a bank-scoping continuation. If the frame's rows are
+    attributed per bank, ask which bank; if they are product-label aggregates
+    (housing-credit NEI, business), the honest reply is the attribution
+    boundary — never a refusal. Runs as a DETERMINISTIC preflight in decide()
+    on the ORIGINAL question (before rewrite/the LLM router), so the live
+    rewrite of the deictic into a fuller rate ask (which parses
+    ``unknown_bank``) can no longer hijack it.
+    """
+    if frame is None:
+        return None
+    folded = fold(question)
+    if not (_DEICTIC_WHICH_BANK_RE.search(folded)
+            or (_DEICTIC_WHICH_BANK_RE2.search(folded)
+                and _DEICTIC_WHICH_BANK_TAIL_RE.search(folded))):
+        return None
+    from .comparison import _rows_for_missing_product, _source_bank_labels
+    # Frame resolution mirrors the structured path's plan scoping: a frame
+    # like "normat e interesit?" (product=None) resolves via
+    # _rows_for_missing_product (deposit rows), NOT resolve_rate_rows on the
+    # raw frame (which returns [] for family/product None).
+    frame_rows = _rows_for_missing_product(frame)
+    frame_has_banks = any(row.get("_bank_lines") for row in frame_rows)
+    if frame_has_banks:
+        labels = ", ".join(_source_bank_labels())
+        return Decision(
+            Outcome.CLARIFY,
+            f"Për cilën bankë dëshironi? Kam të dhëna për: {labels}.",
+            question=question, reason=DecisionReason.CATALOG_UNKNOWN_BANK,
+            rate_intent=frame,
+            trace_flags=frozenset({
+                DecisionEvent.context_inherited,
+                DecisionEvent.structured_lookup,
+            }),
+        )
+    return Decision(
+        Outcome.ANSWER,
+        "Vlera siç raportohen nga Banka e Shqipërisë; tabela nuk i "
+        "atribuon çdo shifër një banke të caktuar.",
+        question=question, reason=DecisionReason.CATALOG_EXACT_HIT,
+        rate_intent=frame,
+        trace_flags=frozenset({
+            DecisionEvent.context_inherited,
+            DecisionEvent.structured_lookup,
+        }),
+    )
+
+
 def _structured_rate_decision(
         question: str, *, frame: RateIntent | None = None) -> Decision | None:
     """Injectable pre-LLM seam for exact closed-catalog rate requests."""
@@ -1286,40 +1346,10 @@ def _structured_rate_decision(
                                 DecisionEvent.structured_lookup,
                             }),
                         )
-            # Deictic bank-scoping question ("per cilen banke behet fjale?",
-            # "cila banke e ka?") right after a structured listing. If the
-            # frame's rows ARE attributed per bank, ask which bank; if they
-            # are product-label aggregates (credit NEI, business), the honest
-            # answer is the attribution boundary, not a refusal.
-            if re.search(r"\b(?:per\s+)?cil[ae]n?\s+bank\w*\b.*\bfjale\b",
-                         fold(question), re.I) or (
-                    re.search(r"\b(?:cil[ae]|per\s+cil[ae]n?)\s+bank\w*\b", fold(question))
-                    and re.search(r"\bfjale\b|\bparaske\b", fold(question))):
-                frame_rows = resolve_rate_rows(frame)
-                frame_has_banks = any(row.get("_bank_lines") for row in frame_rows)
-                if frame_has_banks:
-                    labels = ", ".join(_source_bank_labels())
-                    return Decision(
-                        Outcome.CLARIFY,
-                        f"Për cilën bankë dëshironi? Kam të dhëna për: {labels}.",
-                        question=question, reason=DecisionReason.CATALOG_UNKNOWN_BANK,
-                        rate_intent=frame,
-                        trace_flags=frozenset({
-                            DecisionEvent.context_inherited,
-                            DecisionEvent.structured_lookup,
-                        }),
-                    )
-                return Decision(
-                    Outcome.ANSWER,
-                    "Vlera siç raportohen nga Banka e Shqipërisë; tabela nuk i "
-                    "atribuon çdo shifër një banke të caktuar.",
-                    question=question, reason=DecisionReason.CATALOG_EXACT_HIT,
-                    rate_intent=frame,
-                    trace_flags=frozenset({
-                        DecisionEvent.context_inherited,
-                        DecisionEvent.structured_lookup,
-                    }),
-                )
+            # [SUPERSEDED] The deictic "which bank" handling moved to
+            # _deictic_bank_scope_preflight so it runs in decide() on the
+            # ORIGINAL question, before the LLM can rewrite it into a fuller
+            # rate ask (which parses unknown_bank and hijacked this branch).
         return None
     if parsed.status == "unsupported":
         if parsed.reason == "unrepresented_semantics":
@@ -1469,6 +1499,19 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
     fragment_meta = _fragment_meta_preflight(clean_question, last_handoff, last_answer)
     if fragment_meta is not None:
         return fragment_meta
+
+    # ---- Deictic bank-scoping preflight (deterministic, BEFORE rewrite) ----
+    # "per cilen banke behet fjale?" / "cila banke e ka?" right after a
+    # structured listing asks which bank the listing is about. Must run on
+    # the ORIGINAL question with the frame, BEFORE the LLM router/rewrite can
+    # expand it into a fuller rate ask (which parses unknown_bank and
+    # abstains). Frame-scoped: no frame -> normal path.
+    if last_structured_frame is not None:
+        deictic_bank = _deictic_bank_scope_preflight(
+            clean_question, last_structured_frame,
+        )
+        if deictic_bank is not None:
+            return deictic_bank
 
     # ---- Product-capability statement (deterministic, BEFORE the router) ----
     # Bare "cfare produktesh ofron secila banke?" gets the concise capability

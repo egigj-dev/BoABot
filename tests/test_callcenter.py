@@ -452,14 +452,55 @@ def test_bare_bank_followup_outranks_dense(monkeypatch) -> None:
 def test_deictic_which_bank_after_bankless_listing_answers_boundary(monkeypatch) -> None:
     monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
     from core.comparison import parse_rate_intent
+    from core.callcenter import _deictic_bank_scope_preflight
     frame = parse_rate_intent("po per kredi?").intent or parse_rate_intent(
         "cilat jane normat e interesit?").intent
     # force the credit family frame (bankless)
     credit_frame = frame._replace(family="credit", product=None,
                                   banks=(), bank_scope="all")
-    decision = callcenter._structured_rate_decision(
-        "per cilen banke behet fjale?", frame=credit_frame,
+    decision = _deictic_bank_scope_preflight(
+        "per cilen banke behet fjale?", credit_frame,
     )
     assert decision is not None
     assert decision.outcome is Outcome.ANSWER
     assert "nuk i atribuon çdo shifër një banke" in decision.message
+
+
+# The deictic question must run as a decide() preflight on the ORIGINAL
+# question (before the LLM rewrite into a fuller rate ask, which parses
+# unknown_bank and abstains). Deposit context: per-bank rows -> CLARIFY which
+# bank. Credit context: bankless rows -> attribution boundary. No frame ->
+# normal path untouched.
+def test_deictic_which_bank_deposit_frame_clarifies_via_decide(monkeypatch) -> None:
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    from core.comparison import parse_rate_intent
+    frame = parse_rate_intent("cilat jane normat e interesit?").intent
+    assert frame is not None
+    decision = callcenter.decide(
+        "per cilen banke behet fjale?", "", [], last_structured_frame=frame,
+    )
+    assert decision is not None
+    assert decision.outcome is Outcome.CLARIFY
+    assert decision.reason is DecisionReason.CATALOG_UNKNOWN_BANK
+    assert "Për cilën bankë dëshironi" in decision.message
+
+
+def test_deictic_which_bank_credit_frame_answers_boundary_via_decide(monkeypatch) -> None:
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    from core.comparison import parse_rate_intent
+    frame = parse_rate_intent("po per kredi?").intent or parse_rate_intent(
+        "cilat jane normat e interesit?").intent
+    credit_frame = frame._replace(family="credit", product=None,
+                                  banks=(), bank_scope="all")
+    decision = callcenter.decide(
+        "per cilen banke behet fjale?", "", [], last_structured_frame=credit_frame,
+    )
+    assert decision is not None
+    assert decision.outcome is Outcome.ANSWER
+    assert "nuk i atribuon çdo shifër një banke" in decision.message
+
+
+def test_deictic_which_bank_without_frame_is_normal_path(monkeypatch) -> None:
+    monkeypatch.setattr(callcenter, "_encode_question", lambda _q: np.zeros(1))
+    decision = callcenter.decide("per cilen banke behet fjale?", "", [])
+    assert decision.reason is DecisionReason.DENSE_RETRIEVAL
