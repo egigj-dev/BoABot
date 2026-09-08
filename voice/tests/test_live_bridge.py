@@ -14,7 +14,11 @@ from types import SimpleNamespace
 
 import pytest
 
-import google.genai as genai_module
+# Live-integration-only dependency: the tests never call the real Gemini SDK —
+# they monkeypatch genai_module.Client with a fake — so when the `voice` extra
+# is not installed (google-genai absent) the file must SKIP cleanly instead of
+# failing collection. A collection error suppresses the whole file silently.
+genai_module = pytest.importorskip("google.genai")
 
 from voice.shared.config import VoiceSettings
 from voice.arm_b.live_bridge import LiveTurnBridge
