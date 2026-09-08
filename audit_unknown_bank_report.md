@@ -1,7 +1,7 @@
 # BoABot `unknown_bank` diagnosis audit
 
 Audit date: 2026-08-28  
-Audited repository: `/home/egigj/projects/BoABot`  
+Audited repository: `BoABot`  
 Audited HEAD: `95f08a8ebf7bd04e2c088744b49f1245d5f34586`
 
 ## Executive conclusion
@@ -223,7 +223,7 @@ The authorized focused run passed all 44 tests, confirming the gap rather than r
 - **Most important logic finding:** L-1 confirms the false `unknown_bank` causal chain; L-2 shows that the proposed scope-only fix would then discard the original low-interest constraint and answer generic availability.
 - **Most important structure finding:** S-2—44 focused tests pass without exercising the failing bank-noun availability grammar; the structured tests are untracked and absent from HEAD.
 - **Most important docs-vs-code finding:** D-1—the primary helper promises not to classify implicit all-bank asks as unknown, but does so for the audited question.
-- **Report path:** `/home/egigj/projects/BoABot/audit_unknown_bank_report.md`
+- **Report path:** `audit_unknown_bank_report.md`
 - **Could not be verified:**
   - Whether `BOABOT_COMPARISON_STRUCTURED` was enabled for each live transcript turn.
   - Which commit/working-tree revision served the live transcript.

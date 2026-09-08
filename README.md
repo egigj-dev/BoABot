@@ -19,6 +19,15 @@ db/
   PostgreSQL/pgvector local service and migration.
 rate_tables.jsonl, handoff_probe.json
   Runtime artifacts loaded by trust and handoff policy.
+  handoff_probe.json provenance: frozen k=1 grouped-train nearest-neighbour
+  classifier (class-margin threshold) over bge-m3 embeddings, loaded at import
+  by core/callcenter.py. Its source_sha256 binds it to
+  handoff_split_grouped.json, which is NOT in this repository, and no
+  generator script exists in the tree — the artifact is therefore not
+  reproducible from this checkout alone. The split file lives in the
+  pre-reorg lineage archive (retained outside git); do not regenerate or
+  delete the artifact, and do not rebind it to a different source corpus
+  without re-tuning the margin threshold.
 ```
 
 ## Run
