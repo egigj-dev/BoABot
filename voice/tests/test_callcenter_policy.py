@@ -77,7 +77,12 @@ def test_rewritten_card_question_with_multiple_choices_remains_ambiguous() -> No
     assert decision.outcome is Outcome.CLARIFY
 
 
-def test_classifier_verdict_is_not_bypassed_by_pricing_shape(monkeypatch) -> None:
+def test_pricing_shape_followup_without_incident_evidence_is_not_handoff(monkeypatch) -> None:
+    # The incident probe only runs when the turn (or recent history) carries
+    # positive incident evidence. A pricing-shaped deictic follow-up
+    # ("Po te BKT?") to a card-maintenance question has none, so even a
+    # max probe score cannot hand off — the probe must not be consulted
+    # (mirrors test_domain_fragment_without_prior_clarify_cannot_be_incident).
     monkeypatch.setattr(callcenter, "_encode_question", lambda _text: np.zeros(1))
     monkeypatch.setattr(callcenter, "_probe_score", lambda _embedding: 1.0)
     history = [{
@@ -85,4 +90,5 @@ def test_classifier_verdict_is_not_bypassed_by_pricing_shape(monkeypatch) -> Non
         "content": "Sa kushton mirëmbajtja e kartës te Raiffeisen?",
     }]
     decision = decide("Po te BKT?", "", history)
-    assert decision.outcome is Outcome.HANDOFF
+    assert decision.outcome is not Outcome.HANDOFF
+    assert decision.reason is not callcenter.DecisionReason.INCIDENT_BACKSTOP
