@@ -149,9 +149,11 @@ def test_incident_after_clarify_still_hands_off(monkeypatch) -> None:
 # ---- Step 8: issuer attribution ---------------------------------------------
 
 def test_issuer_rate_single_bank() -> None:
-    # rate_* chunk whose text names exactly one commercial bank -> that bank.
+    # rate_* chunk whose text names exactly one commercial bank -> that bank,
+    # as the canonical label (the "Banka " prefix is retained per the
+    # institution-identity work so the issuer is a renderable canonical name).
     issuer = issuer_of("rate_0092", "Komisione per biznese\nBanka Raiffeisen: 2.00")
-    assert issuer.lower() == "raiffeisen"
+    assert issuer.lower() == "banka raiffeisen"
 
 
 def test_issuer_rate_multi_bank_table() -> None:
