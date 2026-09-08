@@ -13,8 +13,10 @@ from typing import Any
 
 from ..shared.config import VoiceSettings
 from ..shared.correlation import CorrelationRegistry
-from ..shared.events import AudioChunk, RenderRequest, TurnId, TurnRequest
+from ..shared.events import AudioChunk, RenderRequest, TurnId
 from ..shared.metrics import VoiceMetrics
+from ..shared.boa_client import BoaClient, BoaTurnService
+from ..shared.schemas import VoiceUserTurn
 from .schema2 import NativeResponseSink, OutputAudioGate
 from ..shared.turn_client import TurnClient
 
@@ -58,11 +60,14 @@ class LiveBridgeTurn:
     """One JSON-serializable arm-B turn audit."""
 
     call_id: str
+    session_id: str
     turn_id: int
     live_model_id: str
     input_transcript: str
     turn_outcome: str
     handoff: bool
+    reason: str | None
+    pii_redacted: bool
     sources: tuple[dict[str, str], ...]
     approved_text: str | None
     spoken_transcript: str | None
@@ -75,11 +80,14 @@ class LiveBridgeTurn:
     def as_dict(self) -> dict[str, Any]:
         return {
             "call_id": self.call_id,
+            "session_id": self.session_id,
             "turn_id": self.turn_id,
             "live_model_id": self.live_model_id,
             "input_transcript": self.input_transcript,
             "turn_outcome": self.turn_outcome,
             "handoff": self.handoff,
+            "reason": self.reason,
+            "pii_redacted": self.pii_redacted,
             "sources": [dict(source) for source in self.sources],
             "approved_text": self.approved_text,
             "spoken_transcript": self.spoken_transcript,
@@ -100,6 +108,7 @@ class LiveTurnBridge:
         audio_sink: AudioSink,
         event_sink: BridgeEventSink | None = None,
         metrics: VoiceMetrics | None = None,
+        boa_client: BoaTurnService | None = None,
     ) -> None:
         self.settings = settings
         self.metrics = metrics or VoiceMetrics()
@@ -107,10 +116,11 @@ class LiveTurnBridge:
         self.registry = CorrelationRegistry()
         self.output_gate = OutputAudioGate(self.registry, audio_sink, self.metrics)
         self.event_sink = event_sink
-        self.turn_client = TurnClient(
-            settings.turn_base_url, settings.first_token_budget_ms
+        self.boa_client = boa_client or BoaClient(
+            TurnClient(settings.turn_base_url, settings.first_token_budget_ms)
         )
         self.output_sample_rate_hz: int | None = None
+        self._speech_end_monotonic: float | None = None
 
     async def run_turn(
         self,
@@ -118,29 +128,35 @@ class LiveTurnBridge:
         *,
         input_sample_rate_hz: int = 16_000,
         call_id: str | None = None,
+        session_id: str | None = None,
     ) -> LiveBridgeTurn:
         """Run one real turn; provider and /turn failures intentionally propagate."""
         started = time.perf_counter()
         call_id = call_id or uuid.uuid4().hex
-        self.registry.open_call(call_id, f"pending:{call_id}")
+        self.registry.open_call(call_id, session_id or f"pending:{call_id}")
         turn_id, generation_id = self.registry.next_turn(call_id)
         dropped_events_before = self.metrics.counters["native_response_dropped_events"]
         dropped_bytes_before = self.metrics.counters["native_response_dropped_bytes"]
 
         input_transcript = await self._transcribe(caller_audio, input_sample_rate_hz)
         live_input_final_ms = (time.perf_counter() - started) * 1_000
+        speech_end_ms = (
+            (self._speech_end_monotonic - started) * 1_000
+            if self._speech_end_monotonic is not None else live_input_final_ms
+        )
         if not input_transcript.strip():
             raise RuntimeError("Gemini Live returned no finalized input transcript")
 
         turn_started = time.perf_counter()
-        result = await self.turn_client.run(
-            TurnRequest(
-                input_transcript.strip(),
-                None,
-                TurnId(turn_id),
-                include_vetted_text=False,
-            )
+        correlation = self.registry.require(call_id)
+        user_turn = VoiceUserTurn(
+            session_id=None if correlation.session_id.startswith("pending:") else correlation.session_id,
+            text=input_transcript,
+            source="s2s",
+            turn_id=turn_id,
+            correlation_key=call_id,
         )
+        result = await self.boa_client.process_boa_turn(user_turn)
         turn_complete_ms = (time.perf_counter() - turn_started) * 1_000
         self.registry.update_session(call_id, result.done.session_id)
 
@@ -152,37 +168,10 @@ class LiveTurnBridge:
         )
 
         sources = tuple(dict(source) for source in result.done.sources)
-        bridge_handoff = result.done.handoff or result.done.outcome in {
-            "unsupported",
-            "handoff",
-        }
-        if bridge_handoff:
-            await self._emit(
-                {
-                    "type": "handoff",
-                    "call_id": call_id,
-                    "turn_id": int(turn_id),
-                    "outcome": result.done.outcome,
-                }
-            )
-            return self._audit(
-                call_id=call_id,
-                turn_id=int(turn_id),
-                input_transcript=input_transcript,
-                outcome=result.done.outcome,
-                handoff=True,
-                sources=sources,
-                approved_text=None,
-                spoken_transcript=None,
-                dropped_events_before=dropped_events_before,
-                dropped_bytes_before=dropped_bytes_before,
-                live_input_final_ms=live_input_final_ms,
-                turn_complete_ms=turn_complete_ms,
-                live_first_audio_ms=None,
-                end_to_end_first_audio_ms=None,
-            )
-
-        approved_text = "".join(result.tokens)
+        # Only BOA's explicit handoff controls a transport handoff.  Unsupported
+        # and refusal responses remain BOA-approved text and must be spoken.
+        bridge_handoff = result.handoff
+        approved_text = result.text
         if not approved_text.strip():
             raise RuntimeError(
                 f"/turn outcome {result.done.outcome!r} returned no approved answer text"
@@ -216,17 +205,26 @@ class LiveTurnBridge:
         finally:
             self.output_gate.clear()
 
+        if bridge_handoff:
+            await self._emit({
+                "type": "handoff", "call_id": call_id, "turn_id": int(turn_id),
+                "outcome": result.done.outcome,
+            })
         return self._audit(
             call_id=call_id,
+            session_id=result.session_id,
             turn_id=int(turn_id),
             input_transcript=input_transcript,
             outcome=result.done.outcome,
-            handoff=False,
+            handoff=bridge_handoff,
+            reason=result.reason,
+            pii_redacted=result.pii_redacted,
             sources=sources,
             approved_text=approved_text,
             spoken_transcript=spoken_transcript,
             dropped_events_before=dropped_events_before,
             dropped_bytes_before=dropped_bytes_before,
+            speech_end_ms=speech_end_ms,
             live_input_final_ms=live_input_final_ms,
             turn_complete_ms=turn_complete_ms,
             live_first_audio_ms=live_first_audio_ms,
@@ -282,6 +280,7 @@ class LiveTurnBridge:
             if not sent_audio:
                 raise ValueError("caller_audio produced no bytes")
             await session.send_realtime_input(activity_end={})
+            self._speech_end_monotonic = time.perf_counter()
 
             async for message in session.receive():
                 server = message.server_content
@@ -428,15 +427,19 @@ class LiveTurnBridge:
         self,
         *,
         call_id: str,
+        session_id: str,
         turn_id: int,
         input_transcript: str,
         outcome: str,
         handoff: bool,
+        reason: str | None,
+        pii_redacted: bool,
         sources: tuple[dict[str, str], ...],
         approved_text: str | None,
         spoken_transcript: str | None,
         dropped_events_before: int,
         dropped_bytes_before: int,
+        speech_end_ms: float,
         live_input_final_ms: float,
         turn_complete_ms: float,
         live_first_audio_ms: float | None,
@@ -444,11 +447,14 @@ class LiveTurnBridge:
     ) -> LiveBridgeTurn:
         return LiveBridgeTurn(
             call_id=call_id,
+            session_id=session_id,
             turn_id=turn_id,
             live_model_id=self.settings.gemini_live_model,
             input_transcript=input_transcript,
             turn_outcome=outcome,
             handoff=handoff,
+            reason=reason,
+            pii_redacted=pii_redacted,
             sources=sources,
             approved_text=approved_text,
             spoken_transcript=spoken_transcript,
@@ -483,6 +489,16 @@ class LiveTurnBridge:
                     round(end_to_end_first_audio_ms, 3)
                     if end_to_end_first_audio_ms is not None
                     else None
+                ),
+                "speech_end_to_committed_turn": round(max(0.0, live_input_final_ms - speech_end_ms), 3),
+                "boa_latency": round(turn_complete_ms, 3),
+                "committed_turn_to_first_audio": (
+                    round(max(0.0, end_to_end_first_audio_ms - live_input_final_ms), 3)
+                    if end_to_end_first_audio_ms is not None else None
+                ),
+                "speech_end_to_first_audio": (
+                    round(max(0.0, end_to_end_first_audio_ms - speech_end_ms), 3)
+                    if end_to_end_first_audio_ms is not None else None
                 ),
             },
         )

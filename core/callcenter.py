@@ -41,6 +41,11 @@ TRANSFER_FEE_CLARIFY_MESSAGE = (
     "Për individë apo biznese? Dhe bëhet fjalë për transfertë brenda "
     "Shqipërisë apo jashtë vendit?"
 )
+TRANSFER_FEE_SEGMENT_CLARIFY_MESSAGE = "Për individë apo biznese?"
+TRANSFER_FEE_SCOPE_CLARIFY_MESSAGE = (
+    "Bëhet fjalë për transfertë brenda Shqipërisë apo jashtë vendit?"
+)
+TRANSFER_CONTEXT_MESSAGE = "Në rregull. Çfarë dëshironi të dini për transfertën?"
 TRANSFER_FEE_BANK_CLARIFY_MESSAGE = (
     "Dëshironi një bankë specifike apo krahasim mes bankave?"
 )
@@ -136,6 +141,7 @@ class DecisionReason(str, Enum):
     COMPARISON_DIMENSIONS_MISSING = "comparison_dimensions_missing"
     MATURITY_BAND_REQUIRED = "maturity_band_required"
     TRANSFER_FEE_DIMENSIONS_MISSING = "transfer_fee_dimensions_missing"
+    TRANSFER_CONTEXT_ESTABLISHED = "transfer_context_established"
     TRANSFER_FEE_PRICE_UNAVAILABLE = "transfer_fee_price_unavailable"
     STRUCTURED_PLANNER_CLARIFY = "structured_planner_clarify"
     STRUCTURED_ANSWER_AND_FOLLOW_UP = "structured_answer_and_follow_up"
@@ -176,8 +182,8 @@ class Decision:
     rewritten_query: str | None = None  # Step 2b: standalone query from the fused router call (when ON).
     legal_flags: dict | None = None  # Step 10 groundwork: structured flags from the fused call, if any.
     rate_intent: RateIntent | None = None  # Typed key on the no-LLM structured path.
-    response_plan: ResponsePlan | None = None
     trace_flags: frozenset[DecisionEvent] = field(default_factory=frozenset, kw_only=True)
+    response_plan: ResponsePlan | None = None
 
 @dataclass
 class Session:
@@ -194,8 +200,9 @@ def frame_effect(reason: DecisionReason) -> ContextEffect:
     """Return the structured-frame lifecycle effect for a terminal reason."""
     if reason in {
         DecisionReason.CATALOG_EXACT_HIT,
-        DecisionReason.STRUCTURED_PLANNER_CLARIFY,
         DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+        DecisionReason.TRANSFER_CONTEXT_ESTABLISHED,
+        DecisionReason.STRUCTURED_PLANNER_CLARIFY,
     }:
         return ContextEffect.REPLACE
     if reason in {
@@ -276,7 +283,8 @@ sessions = SessionStore()
 _SECRET_FAST_RE = re.compile(
     r"(?:\b(?:pin|cvv|cvc|otp)\b.{0,80}\b(?:zbulu|kompromet|vjedh|dha|ndava|tregova|"
     r"derg\w*|dërg\w*|kerk|doli|nuk funksion)|\b(?:zbulu|kompromet|vjedh|pa|dha|ndava|"
-    r"tregova|derg\w*|dërg\w*|kerk|doli|nuk funksion).{0,80}\b(?:pin|cvv|cvc|otp)\b)", re.I)
+    r"tregova|derg\w*|dërg\w*|kerk|doli|nuk funksion).{0,80}\b(?:pin|cvv|cvc|otp)\b|"
+    r"\b(?:pin|cvv|cvc|otp|password|fjalëkalim\w*)\b.{0,30}(?::|=|\b(?:eshte|është)\b)\s*[A-Za-z0-9._-]{3,64}\b)", re.I)
 
 # Frozen grouped-train nearest-neighbour classifier; serving needs NumPy only.
 _PROBE_PATH = Path(__file__).resolve().parents[1] / "handoff_probe.json"
@@ -295,6 +303,10 @@ _ACCOUNT_ACTION_RE = re.compile(
     r"limit\w*\s+(?:i\s+|e\s+)?kart\w*\s+sim\w*|"
     r"mbyll\w*\s+(?:llogar|kart)\w*|bllok\w*\s+(?:llogar|kart)\w*)",
     re.IGNORECASE,
+)
+_TRANSACTION_ACTION_RE = re.compile(
+    r"\b(?:anulo\w*|ndrysho\w*|ndalo\w*)\s+(?:te\s+)?"
+    r"(?:transfert\w*|pages\w*)\b", re.IGNORECASE,
 )
 
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
@@ -332,9 +344,27 @@ _SMALLTALK_PATTERNS = (
 )
 _SMALLTALK_WORDS = (
     "pershendetje", "miredita", "miremengjes", "mirembrema", "tung", "hello",
-    "hi", "hej", "alo", "lamtumire", "mirupafshim", "faleminderit",
+    "hi", "hej", "alo", "lamtumire", "mirupafshim", "faleminderit", "thanks",
+    "ckemi",
 )
-# Must NOT intercept even if small-talk word appears alongside real intent.
+# Multi-word small-talk phrases (folded). Kept apart from _SMALLTALK_WORDS so a
+# single bare word is never matched mid-phrase; the sequence matcher below
+# prefers the longer phrase first (operation order is by length).
+_SMALLTALK_PHRASES = (
+    "si je", "si jeni", "si po shkon", "si jane gjerat",
+    "cfare ka", "cfare ben", "cfare po ben",
+    "naten e mire", "te falenderoj", "faleminderit shume",
+    "thank you", "tungjatjeta",
+)
+_SMALLTALK_UNITS = tuple(sorted(_SMALLTALK_WORDS + _SMALLTALK_PHRASES,
+                                key=len, reverse=True))
+_SMALLTALK_SEQ_RE = re.compile(
+    r"^(?:" + "|".join(re.escape(u) for u in _SMALLTALK_UNITS) + r")"
+    r"(?:[\s,;.!?–]+(?:" + "|".join(re.escape(u) for u in _SMALLTALK_UNITS) + r"))*"
+    r"[\s,;.!?–]*$",
+    re.I,
+)
+# Must NOT intercept if small-talk appears alongside real intent.
 _SMALLTALK_QUERY_BLOCKLIST = (
     "komision", "norma", "interes", "tarif", "kredi", "depozit", "llogari",
     "rregullore", "rregullorja", "bank", "karte", "shlyerje", "neni",
@@ -347,7 +377,40 @@ def _is_smalltalk(text: str) -> bool:
         return False
     if any(word in folded for word in _SMALLTALK_QUERY_BLOCKLIST):
         return False
-    return any(re.match(pattern, folded) for pattern in _SMALLTALK_PATTERNS)
+    # Pure single-clause forms are still matched by the anchored patterns.
+    if any(re.match(pattern, folded) for pattern in _SMALLTALK_PATTERNS):
+        return True
+    # Combined/elliptical greetings ("pershendetje si je", "pershendetje,
+    # si po shkon?") are a sequence of small-talk units separated by
+    # punctuation or whitespace. The low-risk default start (no LLM router)
+    # answered ONLY single-clause forms; everything else fell through to
+    # retrieval and refused with NO_EVIDENCE_MESSAGE. Accepting any run of
+    # pure small-talk units makes the flag-less default behave like the
+    # router-on mode for social turns.
+    return _SMALLTALK_SEQ_RE.fullmatch(folded) is not None
+
+
+# ---- Bare courtesy fragments ("te lutem", "ju lutem", "lutem" alone) --------
+# Distinct from the smalltalk set: these are polite standalone courtesies that
+# carry no content (not thanks, not a question). MUST be anchored to the bare
+# form ONLY — "ju lutem" is also a common polite OPENER for real banking turns
+# ("ju lutem, sa kushton transferta brenda vendit?"), so a bare courtesy must
+# never swallow a follow-up clause.
+_COURTESY_RE = re.compile(
+    r"^(?:te\s+lutem|ju\s+lutem|ju\s+we|lutem|prit)[.,!? ]*$",
+    re.I,
+)
+COURTESY_MESSAGE = (
+    "Me kënaqësi! Nëse keni ndonjë pyetje tjetër për rregulloret ose tarifat "
+    "bankare, më thuajeni."
+)
+
+
+def _is_bare_courtesy(text: str) -> bool:
+    folded = fold(text).strip()
+    if not folded:
+        return False
+    return _COURTESY_RE.fullmatch(folded) is not None
 
 
 # ---- Informational-query fast path ------------------------------------------
@@ -437,11 +500,16 @@ def _is_informational_banking_query(
     #     and bool(_DOMAIN_MARKER_RE.search(folded))
     #     and not _INCIDENT_MARKER_RE.search(folded)
     # )
+    benign_transfer = (
+        bool(_TRANSFER_SERVICE_RE.search(folded) or _TRANSFER_SEND_RE.search(folded))
+        and not has_incident_marker
+        and not _ACTIVE_INCIDENT_FOR_RATE_RE.search(folded)
+    )
     return (
         bool(_QUESTION_MARKER_RE.search(folded))
         and has_domain_marker
         and not has_incident_marker
-    ) or (
+    ) or benign_transfer or (
         _is_bare_np_rate_continuation(
             text, last_outcome, history or [], frame,
         )
@@ -604,6 +672,12 @@ _PRODUCT_CAPABILITY_RE = re.compile(
     re.I,
 )
 _PRODUCT_CAPABILITY_OFFER_RE = re.compile(r"\b(?:ofron|ofrojne|ofrojn|japin)\b", re.I)
+# The subject of a capability ask is the banks themselves — literally
+# ("bankat", "secila prej bankave") or a deictic plural pronoun referring to
+# the banks just listed in the catalog turn ("ato", "këto", "tyre").
+_PRODUCT_CAPABILITY_SUBJECT_RE = re.compile(
+    r"\bbank\w*\b|\b(?:ato|tyre|këto|keto)\b", re.I,
+)
 _PRODUCT_CAPABILITY_EXCLUDE_RE = re.compile(
     r"\b(?:tarif\w*|komision\w*|interes\w*|norm\w*|penalitet\w*|"
     r"kredi\w*|depozit\w*|kart\w*|llogari\w*)\b",
@@ -613,8 +687,13 @@ _PRODUCT_CAPABILITY_EXCLUDE_RE = re.compile(
 
 def _is_product_capability_speech(text: str) -> bool:
     folded = fold(text)
+    # [SUPERSEDED] The subject used to require a literal "bank*" word, which
+    # missed the deictic follow-up "cfare produktesh ofrojne ato?" (ato = the
+    # banks just listed, no bank noun in the turn). The subject is now a bank
+    # word OR a deictic plural pronoun; the product+offer+exclusion gates
+    # below still bind the intent tight.
     return (
-        re.search(r"\bbank\w*\b", folded) is not None
+        _PRODUCT_CAPABILITY_SUBJECT_RE.search(folded) is not None
         and _PRODUCT_CAPABILITY_RE.search(folded) is not None
         and _PRODUCT_CAPABILITY_OFFER_RE.search(folded) is not None
         and _PRODUCT_CAPABILITY_EXCLUDE_RE.search(folded) is None
@@ -641,11 +720,26 @@ def _fallback_label(question: str) -> str:
         return "catalog"
     if _is_smalltalk(question):
         return "smalltalk"
+    if _is_bare_courtesy(question):
+        return "meta_followup"
     if _is_account_action(question):
         return "account_action"
     if is_ambiguous_card_maintenance(question):
         return "clarify"
     return "answer"
+
+
+_GENERAL_UNKNOWN_TRANSFER_RE = re.compile(
+    r"(?:\bk[eë]t[eë]\s+lloj\s+(?:transfer\w*|pages\w*)\b|"
+    r"\bklient\w*\b.{0,50}\bnuk\s+(?:e\s+)?njeh\b|"
+    r"\bsi\s+trajtohen?\b.{0,60}\b(?:transfer\w*|pages\w*)\b|"
+    r"\b(?:transfer\w*|pages\w*)\b.{0,50}\b(?:t[eë])\s+panjohur\w*\b|"
+    r"\b[çc]far[eë]\s+duhet\s+t[eë]\s+b[eë]j[eë]\s+nj[eë]\s+klient\w*\b.{0,60}\b(?:nuk\s+njeh|panjohur)\b)",
+    re.I,
+)
+
+def _is_general_unknown_transfer(question: str) -> bool:
+    return _GENERAL_UNKNOWN_TRANSFER_RE.search(fold(question)) is not None
 
 
 def _route_label(
@@ -702,6 +796,9 @@ def _route_label(
                         handoff=True, reason=DecisionReason.SEMANTIC_ACCOUNT_ACTION,
                         trace_flags=trace_flags)
     if label in ("incident", "incident_handoff"):
+        if (_is_general_unknown_transfer(question)
+                or not _has_positive_incident_evidence(question)):
+            return None
         return Decision(Outcome.HANDOFF, SECURITY_HANDOFF_MESSAGE,
                         handoff=True, reason=DecisionReason.SEMANTIC_INCIDENT,
                         trace_flags=trace_flags)
@@ -817,28 +914,100 @@ def _is_account_action(question: str) -> bool:
 _ENABLE = ("1", "true", "yes", "on")
 _ACTIVE_INCIDENT_FOR_RATE_RE = re.compile(
     r"\b(?:humb\w*|vjedh\w*|vidh\w*|mashtr\w*|raportoj\w*|"
-    r"(?:me|mua)\s+ikin\w*|dikush)\b",
+    r"(?:me|mua)\s+ikin\w*|dikush)\b|"
+    r"\b(?:transfert\w*|pages\w*)\b.{0,40}\bnuk\s+(?:e\s+)?njoh\b|"
+    r"\bnuk\s+(?:e\s+)?njoh(?:\s+(?:kete|këtë))?\s+(?:transfert\w*|pages\w*)\b|"
+    r"\bnuk\s+e\s+kam\s+ber\w*\s+(?:une\s+)?(?:kete|këtë)?\s*(?:transfert\w*|pages\w*)\b|"
+    r"\bkush\s+e\s+b[eë]ri\w*\b.{0,40}\b(?:transfert\w*|pages\w*)\b",
     re.I,
 )
 
 
 
+_POSITIVE_INCIDENT_EVIDENCE_RE = re.compile(
+    _ACTIVE_INCIDENT_FOR_RATE_RE.pattern +
+    r"|\b(?:me|mua)\s+(?:jane\s+)?marr\w*\s+(?:para|lek\w*)\b|"
+    r"\b(?:para|lek\w*)\s+(?:me|mua)\s+(?:jane\s+)?marr\w*\b|"
+    r"\bkush\s+e\s+beri\w*\b.{0,50}\b(?:pages\w*|transfert\w*)\b",
+    re.I,
+)
+
+
+def _has_positive_incident_evidence(text: str) -> bool:
+    return _POSITIVE_INCIDENT_EVIDENCE_RE.search(fold(text)) is not None
+
+
+def _incident_context_has_positive_evidence(
+        text: str, history: list[dict[str, str]],
+        last_outcome: Outcome | None, last_handoff: bool) -> bool:
+    if _has_positive_incident_evidence(text):
+        return True
+    if not last_handoff or last_outcome is not Outcome.HANDOFF:
+        return False
+    return any(
+        item.get("role") == "user"
+        and _has_positive_incident_evidence(item.get("content", ""))
+        for item in reversed(history[-4:])
+    )
+
+
 _TRANSFER_SERVICE_RE = re.compile(r"\b(?:transfert\w*|transfer\w*)\b", re.I)
-_TRANSFER_SEND_RE = re.compile(r"\b(?:dergoj|derguar|dergim\w*)\b", re.I)
+_TRANSFER_SEND_RE = re.compile(r"\b(?:dergoj|derguar|dergim\w*|cu|coj)\b", re.I)
 _TRANSFER_PRICE_RE = re.compile(
-    r"\b(?:sa\s+(?:kushton|eshte)|cilat?\s+jane|cfar\w*)\b|"
+    r"\b(?:sa\s+(?:me\s+)?(?:kushton|eshte|mban)|cilat?\s+jane|cfar\w*)\b|"
     r"\b(?:tarif|komision|kosto)\w*\b", re.I,
 )
 _TRANSFER_REGULATORY_RE = re.compile(
     r"\b(?:rregull\w*|publik\w*|transparenc\w*|detyrim\w*)\b", re.I,
 )
-_TRANSFER_DOMESTIC_RE = re.compile(r"\bbrenda\s+(?:vendit|shqiperise)\b", re.I)
+_TRANSFER_PROCEDURE_RE = re.compile(
+    r"\b(?:si\s+(?:mund|behet)|cfare\s+duhet|procedur\w*|dokument\w*)\b",
+    re.I,
+)
+_TRANSFER_OTHER_PRODUCT_RE = re.compile(
+    r"\b(?:kart\w*|kredi\w*|depozit\w*|llogari\w*)\b", re.I,
+)
+_TRANSFER_DOMESTIC_RE = re.compile(
+    r"\bbrenda(?:\s+(?:vendit|shqiperise|shqipnise))?\b", re.I,
+)
 _TRANSFER_INTERNATIONAL_RE = re.compile(
-    r"\b(?:jashte\s+(?:vendit|shqiperise)|nderkombetar\w*)\b", re.I,
+    r"\b(?:jashte(?:\s+(?:vendit|shqiperise|shqipnise))?|nderkombetar\w*)\b", re.I,
 )
 _TRANSFER_COMPARISON_RE = re.compile(
     r"\b(?:krahasim\w*\s+mes\s+bank\w*|krahaso\w*)\b", re.I,
 )
+_TRANSFER_GEOGRAPHY_COMPARISON_RE = re.compile(
+    r"\b(?:krahas\w*|ndryshon\w*|me\s+e\s+lire)\b", re.I,
+)
+_TRANSFER_DETAIL_FRAGMENT_RE = re.compile(
+    r"\b\d[\d .,'’]*\s*(?:euro|eur|usd|dollar\w*|lek\w*)\b", re.I,
+)
+
+
+def _explicit_transfer_scope(folded: str) -> tuple[str | None, bool]:
+    """Return explicit scope and whether both scopes form a real conflict."""
+    domestic = _TRANSFER_DOMESTIC_RE.search(folded) is not None
+    international = _TRANSFER_INTERNATIONAL_RE.search(folded) is not None
+    if not (domestic and international):
+        return ("domestic" if domestic else "international" if international else None), False
+    if _TRANSFER_GEOGRAPHY_COMPARISON_RE.search(folded):
+        return None, False
+    if (re.search(r"\b(?:jo|nuk\s+eshte)\s+brenda\b.*\bjashte\b", folded)
+            or re.search(r"^brenda\b.{0,12}\bjo\b.{0,12}\bjashte\b", folded)):
+        return "international", False
+    if (re.search(r"\b(?:jo|nuk\s+eshte)\s+jashte\b.*\bbrenda\b", folded)
+            or re.search(r"\b(?:ne\s+fakt\s+)?brenda\b.{0,12}\bjo\b.{0,12}\bjashte\b", folded)
+            or re.search(r"\bmendova\s+jashte\b.*\bne\s+fakt\s+brenda\b", folded)):
+        return "domestic", False
+    return None, True
+
+
+def _transfer_clarify_message(segment: str | None, scope: str | None) -> str:
+    if segment is None and scope is None:
+        return TRANSFER_FEE_CLARIFY_MESSAGE
+    if segment is None:
+        return TRANSFER_FEE_SEGMENT_CLARIFY_MESSAGE
+    return TRANSFER_FEE_SCOPE_CLARIFY_MESSAGE
 
 
 def _transfer_fee_decision(
@@ -855,10 +1024,24 @@ def _transfer_fee_decision(
             and re.search(r"\b(?:para|euro|lek\w*)\b", folded))
     )
     explicit_segment = _conservative_value(folded, CUSTOMER_SEGMENT_TERMS)
-    explicit_domestic = _TRANSFER_DOMESTIC_RE.search(folded) is not None
-    explicit_international = _TRANSFER_INTERNATIONAL_RE.search(folded) is not None
+    explicit_scope, conflicting_scope = _explicit_transfer_scope(folded)
+    explicit_domestic = explicit_scope == "domestic"
+    explicit_international = explicit_scope == "international"
     explicit_comparison = _TRANSFER_COMPARISON_RE.search(folded) is not None
     candidate_banks, bank_spans = _named_banks(folded)
+    if conflicting_scope:
+        return Decision(
+            Outcome.CLARIFY, TRANSFER_FEE_CLARIFY_MESSAGE, question=question,
+            reason=DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+            rate_intent=RateIntent(
+                bank_scope="named" if candidate_banks else "missing",
+                banks=candidate_banks, product=None, metric="fee",
+                fee_event=None, value_type=None, term_months=None,
+                amount_band=None, breadth="leaf", family="bank_transfer",
+                customer_segment=explicit_segment,
+            ),
+            trace_flags=frozenset({DecisionEvent.structured_lookup}),
+        )
     bank_residue = folded
     for start, end in reversed(bank_spans):
         bank_residue = bank_residue[:start] + " " + bank_residue[end:]
@@ -867,15 +1050,23 @@ def _transfer_fee_decision(
         word in {"po", "per", "te", "tek", "banka", "banken"}
         for word in residue_words
     )
-    if (inherited is not None and not explicit_service
+    explicit_price = _TRANSFER_PRICE_RE.search(folded) is not None
+    detail_followup = bool(
+        inherited is not None and _TRANSFER_DETAIL_FRAGMENT_RE.search(folded)
+    )
+    if (inherited is not None and not explicit_service and not explicit_price
             and explicit_segment is None and not explicit_domestic
             and not explicit_international and not explicit_comparison
-            and not bank_only_followup):
+            and not bank_only_followup and not detail_followup):
+        return None
+    if (inherited is not None and not explicit_service
+            and _TRANSFER_OTHER_PRODUCT_RE.search(folded)):
         return None
     if inherited is None:
-        if not explicit_service or not _TRANSFER_PRICE_RE.search(folded):
+        if not explicit_service:
             return None
-        if _TRANSFER_REGULATORY_RE.search(folded):
+        if (_TRANSFER_REGULATORY_RE.search(folded)
+                or (not explicit_price and _TRANSFER_PROCEDURE_RE.search(folded))):
             return None
     elif explicit_service and _TRANSFER_REGULATORY_RE.search(folded):
         return None
@@ -906,15 +1097,27 @@ def _transfer_fee_decision(
     else:
         bank_scope = "missing"
 
+    metric = "fee" if explicit_price else inherited.metric if inherited is not None else None
     intent = RateIntent(
-        bank_scope=bank_scope, banks=banks, product=None, metric="fee",
+        bank_scope=bank_scope, banks=banks, product=None, metric=metric,
         fee_event=None, value_type=None, term_months=None, amount_band=None,
         breadth="leaf", family="bank_transfer", customer_segment=segment,
         transfer_scope=transfer_scope,
     )
+    if metric is None:
+        message = (TRANSFER_FEE_SCOPE_CLARIFY_MESSAGE
+                   if transfer_scope is None else TRANSFER_CONTEXT_MESSAGE)
+        return Decision(
+            Outcome.CLARIFY if transfer_scope is None else Outcome.ANSWER,
+            message, question=question,
+            reason=DecisionReason.TRANSFER_CONTEXT_ESTABLISHED,
+            rate_intent=intent,
+            trace_flags=frozenset({DecisionEvent.structured_lookup}),
+        )
     if segment is None or transfer_scope is None:
         return Decision(
-            Outcome.CLARIFY, TRANSFER_FEE_CLARIFY_MESSAGE, question=question,
+            Outcome.CLARIFY,
+            _transfer_clarify_message(segment, transfer_scope), question=question,
             reason=DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
             rate_intent=intent,
             trace_flags=frozenset({DecisionEvent.structured_lookup}),
@@ -965,8 +1168,18 @@ def _fragment_meta_preflight(
             handoff=last_handoff, reason=DecisionReason.FRAGMENT_META,
         )
 
-    if not (is_conversational_fragment(question) or is_meta_help(question)):
+    if not (is_conversational_fragment(question) or is_meta_help(question)
+            or _is_bare_courtesy(question)):
         return None
+    # Bare courtesy ("te lutem" alone) gets the polite keep-helping reply,
+    # never a retrieval attempt.
+    if _is_bare_courtesy(question):
+        message = (META_FOLLOWUP_HANDOFF_MESSAGE if last_handoff
+                   else COURTESY_MESSAGE)
+        return Decision(
+            Outcome.ANSWER, message, question=question,
+            handoff=last_handoff, reason=DecisionReason.FRAGMENT_META,
+        )
     message = META_FOLLOWUP_HANDOFF_MESSAGE if last_handoff else META_FOLLOWUP_MESSAGE
     return Decision(
         Outcome.ANSWER, message, question=question,
@@ -1032,6 +1245,76 @@ def _structured_rate_decision(
                     None, question=question,
                     reason=DecisionReason.CATALOG_EXACT_HIT,
                     rate_intent=merged,
+                    trace_flags=frozenset({
+                        DecisionEvent.context_inherited,
+                        DecisionEvent.structured_lookup,
+                    }),
+                )
+            # Bank-only continuation ("banka raiffeisen" after a structured
+            # listing): the merge bound the bank but left product/family from
+            # the bare phrase unset, so the merged intent resolves no rows.
+            # Re-derive from the frame's OWN scope and bind only the bank —
+            # this is the natural "give me that listing for this bank"
+            # continuation, not a dense-refusal. The frame that answers a
+            # bare "normat e interesit" ask is plan-resolved (missing_product
+            # -> deposit), so resolution must mirror the plan's scoping:
+            # _rows_for_missing_product with the bank bound, NOT
+            # resolve_rate_rows on the raw family=None frame (that always
+            # returns []). The continuation must be a PURE bank scoping —
+            # family/product/metric inherited unchanged — or a "po per kredi?"
+            # family switch could wrongly resolve deposit rows under a credit
+            # frame (family-agnostic _rows_for_missing_product). [SUPERSEDED]
+            # These bare-bank turns previously fell through to dense retrieval
+            # and abstained with NO_EVIDENCE_MESSAGE even when the frame
+            # carried the answer.
+            if merged is not None and merged.bank_scope == "named":
+                pure_bank_scoping = (
+                    merged.family == frame.family
+                    and merged.product == frame.product
+                    and merged.metric == frame.metric
+                )
+                if pure_bank_scoping:
+                    from .comparison import _rows_for_missing_product
+                    bank_scoped_rows = _rows_for_missing_product(merged)
+                    if bank_scoped_rows:
+                        return Decision(
+                            None, question=question,
+                            reason=DecisionReason.CATALOG_EXACT_HIT,
+                            rate_intent=merged,
+                            trace_flags=frozenset({
+                                DecisionEvent.context_inherited,
+                                DecisionEvent.structured_lookup,
+                            }),
+                        )
+            # Deictic bank-scoping question ("per cilen banke behet fjale?",
+            # "cila banke e ka?") right after a structured listing. If the
+            # frame's rows ARE attributed per bank, ask which bank; if they
+            # are product-label aggregates (credit NEI, business), the honest
+            # answer is the attribution boundary, not a refusal.
+            if re.search(r"\b(?:per\s+)?cil[ae]n?\s+bank\w*\b.*\bfjale\b",
+                         fold(question), re.I) or (
+                    re.search(r"\b(?:cil[ae]|per\s+cil[ae]n?)\s+bank\w*\b", fold(question))
+                    and re.search(r"\bfjale\b|\bparaske\b", fold(question))):
+                frame_rows = resolve_rate_rows(frame)
+                frame_has_banks = any(row.get("_bank_lines") for row in frame_rows)
+                if frame_has_banks:
+                    labels = ", ".join(_source_bank_labels())
+                    return Decision(
+                        Outcome.CLARIFY,
+                        f"Për cilën bankë dëshironi? Kam të dhëna për: {labels}.",
+                        question=question, reason=DecisionReason.CATALOG_UNKNOWN_BANK,
+                        rate_intent=frame,
+                        trace_flags=frozenset({
+                            DecisionEvent.context_inherited,
+                            DecisionEvent.structured_lookup,
+                        }),
+                    )
+                return Decision(
+                    Outcome.ANSWER,
+                    "Vlera siç raportohen nga Banka e Shqipërisë; tabela nuk i "
+                    "atribuon çdo shifër një banke të caktuar.",
+                    question=question, reason=DecisionReason.CATALOG_EXACT_HIT,
+                    rate_intent=frame,
                     trace_flags=frozenset({
                         DecisionEvent.context_inherited,
                         DecisionEvent.structured_lookup,
@@ -1166,6 +1449,14 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
             reason=DecisionReason.NEGATION_STATEMENT,
         )
 
+    # Explicit transaction changes outrank incident probing and fee routing.
+    if _TRANSACTION_ACTION_RE.search(fold(clean_question)):
+        return Decision(
+            Outcome.HANDOFF, ACCOUNT_HANDOFF_MESSAGE,
+            question=clean_question, handoff=True,
+            reason=DecisionReason.ACCOUNT_ACTION_BACKSTOP,
+        )
+
     # ---- Transfer-fee amount seam (deterministic, NEVER retrieves) ----
     transfer_fee = _transfer_fee_decision(clean_question, last_structured_frame)
     if transfer_fee is not None:
@@ -1258,8 +1549,10 @@ def decide(question: str, last_answer: str, history: list[dict[str, str]],
 
     query_embedding = _encode_question(clean_question)
     incident_score = None
-    if not _is_informational_banking_query(
-            clean_question, last_outcome, history, last_structured_frame):
+    if (_incident_context_has_positive_evidence(
+            clean_question, history, last_outcome, last_handoff)
+            and not _is_informational_banking_query(
+                clean_question, last_outcome, history, last_structured_frame)):
         # Deterministic backstop: the frozen incident classifier still runs on
         # non-informational turns so an LLM-missed incident escalates. Incident
         # vocabulary is routed through the classifier unchanged.

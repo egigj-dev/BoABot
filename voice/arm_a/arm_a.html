@@ -116,7 +116,7 @@ const OUTCOME = {answer:['answer',''], clarify:['sqarim','route'], unsupported:[
 const stageInk = new Map();
 
 let ctx, stream, src, proc, sink, frames = [], levels = new Array(BARS).fill(0);
-let recording = false, busy = false, t0 = 0, tick, cap, turnNo = 0;
+let recording = false, busy = false, t0 = 0, tick, cap, turnNo = 0, boaSessionId = null;
 
 for (let i = 0; i < BARS; i++) meter.append(document.createElement('i'));
 const bars = [...meter.children];
@@ -203,8 +203,9 @@ async function send(){
   if (pcm.length < rate / 5){ idle(); return fail('Regjistrimi ishte shumë i shkurtër.'); }
   busy = true; recBtn.disabled = true; fail();
   try {
-    const res = await fetch('/api/turn', {method:'POST', headers:{'Content-Type':'audio/wav'}, body: toWav(await to16k(pcm, rate))});
-    const data = await res.json();
+    const headers = {'Content-Type':'audio/wav'}; if (boaSessionId) headers['X-BoABot-Session-Id'] = boaSessionId;
+    const res = await fetch('/api/turn', {method:'POST', headers, body: toWav(await to16k(pcm, rate))});
+    const data = await res.json(); boaSessionId = res.headers.get('X-BoABot-Session-Id') || data.session_id || boaSessionId;
     if (!res.ok) throw new Error(data.detail || 'HTTP ' + res.status);
     render(data);
   } catch (e){ fail('Turni dështoi: ' + e.message); }
@@ -238,6 +239,7 @@ function render(r){
 
   const said = document.createElement('p');
   said.className = 'said'; said.textContent = r.transcript || '—';
+  if (r.session_id) said.title = 'BOA session: ' + r.session_id;
   card.append(said);
 
   const answer = document.createElement('p');

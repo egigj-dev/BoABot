@@ -30,6 +30,9 @@ SECTION_HEADING = re.compile(
     re.MULTILINE,
 )
 HEADER = re.compile(r"^[^\n]*\s—\sNeni\s+[^\n]+\n?")
+FALSE_DUPLICATED_HEADING = re.compile(
+    r"^Neni\s+(?:19|20)\d{2}\s*\n", re.IGNORECASE,
+)
 NORMALIZE = re.compile(r"\W+", re.UNICODE)
 
 # These preserve every handwritten fixture ID after its intentional pin repair.
@@ -70,6 +73,11 @@ def body_text(text: str) -> str:
     return HEADER.sub("", text, count=1)
 
 
+def remove_false_duplicated_heading(text: str) -> str:
+    """Remove only the body heading duplicated from a rejected year article."""
+    return FALSE_DUPLICATED_HEADING.sub("", text, count=1)
+
+
 def valid_article_identifier(article: str | None) -> bool:
     """Reject standalone years or joined page-footnote markers as articles."""
     return article is not None and YEAR_LIKE_ARTICLE.fullmatch(article) is None
@@ -81,7 +89,8 @@ def sanitize_source_row(row: SourceRow) -> SourceRow:
         return row
     return SourceRow(
         id=row.id, doc=row.doc, article=None, status=row.status,
-        section=row.section, url=row.url, text=body_text(row.text), embedding=None,
+        section=row.section, url=row.url,
+        text=remove_false_duplicated_heading(body_text(row.text)), embedding=None,
     )
 
 

@@ -326,3 +326,86 @@ def test_api_post_rewrite_reparse_without_prior_frame(
     assert session.last_structured_frame is not None
     assert session.last_structured_frame.family == "credit"
     assert session.last_structured_frame.metric == "interest_rate"
+
+
+def test_api_structured_turn_uses_llm_over_rows_when_stack_on(monkeypatch) -> None:
+    """Full semantic stack ON: structured-rate answers flow through grounded
+    generation (fidelity-guarded) instead of the deterministic renderer.
+
+    The transcript naturality fix: the same actionable rows are handed to the
+    generator so "po per depozitat?" becomes a natural summary rather than a
+    wall of template lines — while every sentence still passes the guard.
+    """
+    monkeypatch.setenv("BOABOT_LLM_ROUTER", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-test-key")
+    store = callcenter.SessionStore()
+    monkeypatch.setattr(api, "sessions", store)
+    monkeypatch.setattr(api, "needs_rewrite", lambda *_a, **_k: False)
+    parsed = comparison.parse_rate_intent(
+        "Cilat janë normat e interesit të depozitave?"
+    )
+    assert parsed.status == "resolved" and parsed.intent is not None
+    monkeypatch.setattr(api, "decide", lambda *_a, **_k: callcenter.Decision(
+        None, question="Cilat janë normat e interesit të depozitave?",
+        reason=callcenter.DecisionReason.CATALOG_EXACT_HIT,
+        rate_intent=parsed.intent,
+    ))
+    monkeypatch.setattr(
+        api, "retrieve_evidence",
+        lambda query, *_a, rate_intent=None, **_k: (
+            comparison.structured_rate_hits(rate_intent) if rate_intent else [],
+            "",
+        ),
+    )
+    monkeypatch.setattr(
+        api, "stream_answer", lambda *_a, **_k: iter(["Banka Credins aplikon normë 3.00."]),
+    )
+    monkeypatch.setattr(
+        api._fidelity_guard, "verify_sources",
+        lambda *_a, **_k: type("V", (), {"approved": True, "reason": ""})(),
+    )
+    client = TestClient(api.app)
+    done = _done(client.post("/turn", json={
+        "question": "Cilat janë normat e interesit të depozitave?",
+    }))
+    assert done["outcome"] == "answer"
+    assert done["reason"] == callcenter.DecisionReason.CATALOG_EXACT_HIT.value
+    assert "Banka Credins aplikon normë 3.00." in done.get("answer_text", "")
+
+
+def test_api_bare_bank_after_capability_rewrites_to_capability_answer(monkeypatch) -> None:
+    """A bare bank-name follow-up after the capability answer rewrites into a
+    capability question (\"Çfarë produktesh ... ofron Banka Raiffeisen?\") and
+    must re-fire the product-capability gate on the REWRITTEN query instead of
+    falling through to dense retrieval and abstaining. The capability gate
+    fired pre-router on the raw \"banka raiffeisen\" and missed it (no
+    deictic/product signal), so the re-check lives in the answer path.
+    """
+    store = callcenter.SessionStore()
+    monkeypatch.setattr(api, "sessions", store)
+
+    def fake_decide(question, *_a, **_k):
+        return callcenter.Decision(
+            None, question=question,
+            reason=callcenter.DecisionReason.DENSE_RETRIEVAL,
+        )
+    monkeypatch.setattr(api, "decide", fake_decide)
+    monkeypatch.setattr(api, "needs_rewrite", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        api, "rewrite",
+        lambda q, _h: "Çfarë produktesh dhe shërbimesh ofron Banka Raiffeisen në Shqipëri?",
+    )
+    monkeypatch.setattr(
+        api, "retrieve_evidence",
+        lambda *_a, **_k: ([], "Nuk gjeta burim mjaftueshëm të lidhur për t'iu përgjigjur me besueshmëri."),
+    )
+    client = TestClient(api.app)
+    response = client.post("/turn", json={
+        "question": "banka raiffeisen",
+    })
+    events = _events(response)
+    done = next(e for e in events if e["type"] == "done")
+    assert done["outcome"] == "answer"
+    assert done["reason"] == callcenter.DecisionReason.PRODUCT_CAPABILITY.value
+    token_text = "".join(e.get("text", "") for e in events if e["type"] == "token")
+    assert "më tregoni kategorinë" in token_text

@@ -111,7 +111,7 @@
     const recorderBox = document.getElementById('recorder');
     const history = document.getElementById('history');
     let context, stream, source, processor, silentGain, chunks = [], startedAt = 0;
-    let timerHandle, limitHandle, recording = false;
+    let timerHandle, limitHandle, recording = false, boaSessionId = null;
 
     function setStatus(text, error = false) {
       statusBox.textContent = text; statusBox.classList.toggle('error', error);
@@ -168,8 +168,9 @@
       recordButton.disabled = true; setStatus('Gemini Live po transkripton dhe verifikon turnin…');
       try {
         const samples = await resample(captured, inputRate);
-        const response = await fetch('/api/turn', {method: 'POST', headers: {'Content-Type': 'audio/wav'}, body: pcmWav(samples)});
-        const result = await response.json(); if (!response.ok) throw new Error(result.detail || ('HTTP ' + response.status));
+        const headers = {'Content-Type': 'audio/wav'}; if (boaSessionId) headers['X-BoABot-Session-Id'] = boaSessionId;
+        const response = await fetch('/api/turn', {method: 'POST', headers, body: pcmWav(samples)});
+        const result = await response.json(); boaSessionId = response.headers.get('X-BoABot-Session-Id') || result.session_id || boaSessionId; if (!response.ok) throw new Error(result.detail || ('HTTP ' + response.status));
         renderTurn(result); setStatus('Turni Arm B përfundoi.');
       } catch (error) { setStatus('Turni dështoi: ' + error.message, true); }
       finally { recordButton.disabled = false; timerButton.textContent = '0.0 s'; }
@@ -191,12 +192,13 @@
       if (result.verbatim_match !== null) badges.append(badge('verbatim ' + (result.verbatim_match ? '✓' : '✕'), result.verbatim_match));
       if (result.normalized_match !== null) badges.append(badge('normalized ' + (result.normalized_match ? '✓' : '✕'), result.normalized_match));
       head.append(title, badges); card.append(head);
+      field(card, 'Sessioni BOA', result.session_id);
       field(card, 'Statusi i përgjigjes', result.response_status);
       field(card, 'Transkripti hyrës · Gemini Live', result.transcript);
       field(card, 'Teksti i aprovuar · /turn', result.approved_text);
       field(card, 'Transkripti i audios së folur · Gemini Live', result.spoken_transcript);
       if (result.audio) { const player = document.createElement('audio'); player.id = 'answer-audio'; player.controls = true;
-        player.src = 'data:' + result.audio.mime_type + ';base64,' + result.audio.data_base64; card.append(player); player.play().catch(() => {}); }
+        player.src = 'data:' + result.audio.mime_type + ';base64,' + result.audio.data_base64; card.append(player); player.onplay = () => setStatus('BoABot po flet…'); player.onended = () => setStatus('Gati për regjistrim.'); player.play().catch(() => {}); }
       if (result.sources && result.sources.length) {
         const label = document.createElement('div'); label.className = 'label'; label.textContent = 'Burimet publike'; card.append(label);
         const sources = document.createElement('div'); sources.className = 'sources';

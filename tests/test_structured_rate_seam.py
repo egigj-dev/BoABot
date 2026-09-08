@@ -251,6 +251,13 @@ def test_catalog_schema_and_typed_coverage_audit() -> None:
 
 
 def test_api_structured_path_bypasses_all_llm_rewrite_and_fidelity(monkeypatch) -> None:
+    # Deterministic floor contract: with the structured seam ON but the
+    # semantic stack OFF (no router/answerability key), the typed path must
+    # never build a prompt, generate, or consult the answerability LLM — the
+    # exact renderer over the rows is the whole answer. (With
+    # BOABOT_LLM_ANSWERABILITY on, the rebalanced path deliberately hands the
+    # rows to grounded generation, which is covered by
+    # test_api_structured_turn_uses_llm_over_rows_when_stack_on.)
     class _Session:
         session_id = "structured-session"
         last_answer = ""
@@ -259,7 +266,7 @@ def test_api_structured_path_bypasses_all_llm_rewrite_and_fidelity(monkeypatch) 
         last_handoff = False
 
     monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
-    monkeypatch.setenv("BOABOT_LLM_ANSWERABILITY", "1")
+    monkeypatch.delenv("BOABOT_LLM_ANSWERABILITY", raising=False)
     monkeypatch.setattr(api, "sessions", type("S", (), {
         "get": staticmethod(lambda _sid: _Session()),
         "record": staticmethod(lambda *_a, **_k: None),

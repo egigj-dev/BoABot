@@ -124,15 +124,17 @@ def test_clarify_domain_fragment_skips_incident_probe(monkeypatch, fragment) -> 
     assert not decision.handoff
 
 
-def test_domain_fragment_without_prior_clarify_keeps_incident_probe(monkeypatch) -> None:
+def test_domain_fragment_without_prior_clarify_cannot_be_incident(monkeypatch) -> None:
     monkeypatch.setattr(callcenter, "_analyze_turn", lambda *a, **k: None)
     monkeypatch.setattr(callcenter, "_classify_turn", lambda *a, **k: "answer")
     monkeypatch.setattr(callcenter, "_encode_question", lambda _t: np.zeros(1))
-    monkeypatch.setattr(callcenter, "_probe_score", lambda _e: callcenter._HANDOFF_THRESHOLD)
+    monkeypatch.setattr(
+        callcenter, "_probe_score",
+        lambda _e: pytest.fail("benign fragment must not reach incident probe"),
+    )
     decision = decide("per kartë debiti, per person fizik", "", [])
-    assert decision.outcome is Outcome.HANDOFF
-    assert decision.reason is callcenter.DecisionReason.INCIDENT_BACKSTOP
-
+    assert decision.outcome is not Outcome.HANDOFF
+    assert decision.reason is not callcenter.DecisionReason.INCIDENT_BACKSTOP
 
 def test_incident_after_clarify_still_hands_off(monkeypatch) -> None:
     monkeypatch.setattr(callcenter, "_analyze_turn", lambda *a, **k: None)

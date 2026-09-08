@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from .cli.live_run import run_single
 from ..shared.config import VoiceSettings
+from ..shared.session import SESSION_HEADER, request_boa_session_id
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ MAX_AUDIO_BYTES = 2_000_000
 MAX_AUDIO_SECONDS = 30.0
 ACCEPTED_AUDIO_TYPES = {"audio/wav", "audio/wave", "audio/x-wav"}
 PAGE = Path(__file__).with_name("arm_a.html").read_text(encoding="utf-8")
-ArmARunner = Callable[[Path, Path, VoiceSettings], Awaitable[dict[str, Any]]]
+ArmARunner = Callable[[Path, Path, VoiceSettings, str], Awaitable[dict[str, Any]]]
 arm_a_runner: ArmARunner = run_single
 
 app = FastAPI(title="BoABot Arm A microphone", docs_url=None, redoc_url=None)
@@ -87,7 +88,10 @@ def _browser_result(manifest: dict[str, Any], answer_audio: bytes | None) -> dic
         if isinstance(source, dict)
     ]
     return {
+        "session_id": manifest.get("session_id"),
         "outcome": manifest.get("outcome"),
+        "reason": manifest.get("reason"),
+        "pii_redacted": bool(manifest.get("pii_redacted")),
         "handoff": bool(manifest.get("handoff")),
         "transcript": manifest.get("transcript_text", ""),
         "raw_transcript": manifest.get(
@@ -119,6 +123,7 @@ async def health() -> dict[str, bool]:
 async def browser_turn(request: Request) -> JSONResponse:
     payload = await _read_audio(request)
     request_id = uuid.uuid4().hex
+    session_id = request_boa_session_id(request.headers)
     try:
         with tempfile.TemporaryDirectory(
             prefix=f"boabot-arm-a-{request_id[:8]}-", dir="/tmp"
@@ -128,7 +133,7 @@ async def browser_turn(request: Request) -> JSONResponse:
             out_dir = workspace / "result"
             audio_path.write_bytes(payload)
             manifest = await arm_a_runner(
-                audio_path, out_dir, VoiceSettings.from_env()
+                audio_path, out_dir, VoiceSettings.from_env(), session_id
             )
             answer_path = out_dir / "answer.wav"
             answer_audio = answer_path.read_bytes() if answer_path.is_file() else None
@@ -140,4 +145,6 @@ async def browser_turn(request: Request) -> JSONResponse:
         raise HTTPException(
             502, f"Arm A could not complete this turn: {exc}"
         ) from exc
-    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    response_session_id = str(result.get("session_id") or session_id)
+    result["session_id"] = response_session_id
+    return JSONResponse(result, headers={"Cache-Control": "no-store", SESSION_HEADER: response_session_id})

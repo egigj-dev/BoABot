@@ -55,6 +55,16 @@ _FINANCIAL_VALUE_RE = re.compile(
 _FINANCIAL_FACT_RE = re.compile(
     r"\b(?:tarif|komision|kosto|interes|norm)\w*\b", re.I,
 )
+_TRANSFER_FEE_ASK_RE = re.compile(
+    r"\b(?:transfert|transfer)\w*\b|"
+    r"\b(?:dergoj|derguar|dergim\w*|cu|coj)\b.{0,40}"
+    r"\b(?:para|euro|eur|usd|dollar\w*|lek\w*)\b",
+    re.I,
+)
+_WITHDRAWAL_EVIDENCE_RE = re.compile(
+    r"\b(?:terheq\w*|cash|atm|terminal\w*)\b", re.I,
+)
+_TRANSFER_EVIDENCE_RE = re.compile(r"\b(?:transfert|transfer)\w*\b", re.I)
 
 ABSTAIN_MESSAGE = (
     "Nuk kam një përgjigje të saktë për këtë pyetje nga të dhënat e publikuara. "
@@ -110,6 +120,8 @@ class RequestedFact(str, Enum):
 
 def requested_fact(question: str) -> RequestedFact:
     folded = fold(question)
+    if _price_ask(question) and _TRANSFER_FEE_ASK_RE.search(folded):
+        return RequestedFact.FEE_AMOUNT
     if re.search(r"\b(?:cfare eshte|perkufiz)\w*\b", folded):
         return RequestedFact.DEFINITION
     if re.search(r"\b(?:me e ulet|me te ulet|me e lire|me te mire|krahas)\w*\b", folded):
@@ -154,6 +166,7 @@ def _price_ask(question: str) -> bool:
     folded = fold(question)
     return (
         any(term in folded for term in PRICE_INTENT)
+        or re.search(r"\bsa\s+(?:me\s+)?mban\b", folded) is not None
         or re.search(r"\bcilat?\s+jane\s+(?:tarif|komision|kosto)\w*", folded)
         is not None
     )
@@ -166,6 +179,11 @@ def lexical_verdict(question: str, hits) -> tuple[bool, str]:
     if article and not _hits_have_article(hits, article.group(1)):
         return False, "abstain_no_article_in_evidence"
     fact = requested_fact(question)
+    if fact is RequestedFact.FEE_AMOUNT and _TRANSFER_FEE_ASK_RE.search(folded):
+        evidence = "\n".join(str(hit.get("text") or "") for hit in hits)
+        if (_WITHDRAWAL_EVIDENCE_RE.search(fold(evidence))
+                and not _TRANSFER_EVIDENCE_RE.search(fold(evidence))):
+            return False, "abstain_service_mismatch"
     if (fact in {RequestedFact.FEE_AMOUNT, RequestedFact.INTEREST_RATE}
             and not _hits_contain_requested_financial_value(hits)):
         return False, "abstain_price_without_value"

@@ -10,16 +10,18 @@ from collections.abc import AsyncIterable, Awaitable, Callable
 from dataclasses import dataclass, field
 
 from .asr.base import StreamingASR
-from ..shared.confidence import CRITICAL_RE, ConfidenceAction, ConfidenceDecision, ConfidencePolicy
+from ..shared.confidence import ConfidenceAction, ConfidenceDecision, ConfidencePolicy
+from ..shared.boa_client import BoaTurnService, as_boa_client
 from ..shared.barge_in import BargeInCoordinator
 from ..shared.config import VoiceSettings
 from ..shared.correlation import CorrelationError, CorrelationRegistry
-from ..shared.events import AudioChunk, Transcript, TurnRequest
+from ..shared.events import AudioChunk, Transcript
 from ..shared.fidelity_guard import FidelityGuard
 from ..shared.metrics import VoiceMetrics
 from ..shared.sentence_buffer import SentenceBuffer
 from ..shared.telephony import CallControl
-from ..shared.turn_client import TurnResult, TurnService
+from ..shared.schemas import VoiceBoaResponse, VoiceUserTurn
+from ..shared.turn_client import TurnService
 from ..shared.tts.base import TTS
 from ..shared.vad import EnergyVAD, VADEvent
 AudioSink = Callable[[AudioChunk], Awaitable[None]]
@@ -53,7 +55,7 @@ class Schema1TurnAudit:
 class Schema1Orchestrator:
     """Only policy-approved final transcripts reach `/turn` and then TTS."""
 
-    def __init__(self, asr: StreamingASR, turn_client: TurnService, tts: TTS,
+    def __init__(self, asr: StreamingASR, turn_client: BoaTurnService | TurnService, tts: TTS,
                  call_control: CallControl, audio_sink: AudioSink,
                  settings: VoiceSettings | None = None,
                  registry: CorrelationRegistry | None = None,
@@ -64,7 +66,7 @@ class Schema1Orchestrator:
                  barge_in: BargeInCoordinator | None = None) -> None:
         self.settings = settings or VoiceSettings.from_env()
         self.asr = asr
-        self.turn_client = turn_client
+        self.boa_client = as_boa_client(turn_client)
         self.tts = tts
         self.call_control = call_control
         self.audio_sink = audio_sink
@@ -122,11 +124,11 @@ class Schema1Orchestrator:
                 ("Ju lutem përsëriteni pyetjen më qartë.",), audit,
             )
             return audit
-        request = TurnRequest(
-            transcript.text.strip(),
-            None if current.session_id.startswith("pending:") else current.session_id,
-            turn_id,
-            include_vetted_text=True,
+        user_turn = VoiceUserTurn(
+            session_id=None if current.session_id.startswith("pending:") else current.session_id,
+            text=transcript.text,
+            source="cascade",
+            turn_id=turn_id,
             correlation_key=call_id,
         )
         sentence_queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -155,7 +157,9 @@ class Schema1Orchestrator:
             asyncio.create_task(render_stream()) if stream_during_turn else None
         )
         try:
-            result = await self.turn_client.run(request, on_event)
+            result = await self.boa_client.process_boa_turn(
+                user_turn, on_event, include_vetted_text=True,
+            )
         except BaseException:
             if renderer_task is not None:
                 for request_id in self.registry.active_render_ids(call_id):
@@ -213,7 +217,7 @@ class Schema1Orchestrator:
                     verdict = self.fidelity_guard.verify_sources(sentence, result.done.sources)
                     if not verdict.approved:
                         audit.fidelity_failure = verdict.reason
-                        await self.turn_client.cancel(call_id)
+                        await self.boa_client.cancel(call_id)
                         await self._handoff(call_id, audit, "fidelity guard")
                         return audit
             await self._render_sentences(
@@ -260,7 +264,7 @@ class Schema1Orchestrator:
             self.registry.finish_render(call_id, request_id)
 
     @staticmethod
-    def _server_authorizes_policy(decision: ConfidenceDecision, result: TurnResult) -> bool:
+    def _server_authorizes_policy(decision: ConfidenceDecision, result: VoiceBoaResponse) -> bool:
         if decision.action is ConfidenceAction.PROCEED:
             return True
         if decision.action is ConfidenceAction.CLARIFY:

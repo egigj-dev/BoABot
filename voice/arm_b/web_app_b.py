@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from ..shared.config import VoiceSettings
 from ..shared.events import AudioChunk
+from ..shared.session import SESSION_HEADER, request_boa_session_id
 from .live_bridge import LiveTurnBridge
 
 
@@ -26,7 +27,7 @@ MAX_AUDIO_SECONDS = 30.0
 ACCEPTED_AUDIO_TYPES = {"audio/wav", "audio/wave", "audio/x-wav"}
 PAGE = Path(__file__).with_name("arm_b.html").read_text(encoding="utf-8")
 ArmBRunner = Callable[
-    [bytes, VoiceSettings], Awaitable[tuple[dict[str, Any], bytes, int]]
+    [bytes, VoiceSettings, str], Awaitable[tuple[dict[str, Any], bytes, int]]
 ]
 
 app = FastAPI(title="BoABot Arm B microphone", docs_url=None, redoc_url=None)
@@ -94,7 +95,7 @@ def _pcm_wav(pcm: bytes, sample_rate_hz: int) -> bytes:
 
 
 async def run_arm_b(
-    pcm: bytes, settings: VoiceSettings
+    pcm: bytes, settings: VoiceSettings, session_id: str
 ) -> tuple[dict[str, Any], bytes, int]:
     output_audio = bytearray()
     handoff_events: list[dict[str, Any]] = []
@@ -107,16 +108,13 @@ async def run_arm_b(
 
     bridge = LiveTurnBridge(settings, audio_sink, event_sink)
     audit = await bridge.run_turn(
-        _pcm_frames(pcm), input_sample_rate_hz=16_000
+        _pcm_frames(pcm), input_sample_rate_hz=16_000, session_id=session_id
     )
     record = audit.as_dict()
-    if audit.handoff:
-        if output_audio:
-            raise RuntimeError("Arm B handoff emitted caller audio")
-        if not handoff_events:
-            raise RuntimeError("Arm B handoff emitted no handoff event")
-    elif not output_audio:
-        raise RuntimeError("Arm B approved render emitted no caller audio")
+    if audit.handoff and not handoff_events:
+        raise RuntimeError("Arm B handoff emitted no handoff event")
+    if not output_audio:
+        raise RuntimeError("Arm B BOA-approved response emitted no caller audio")
     return record, bytes(output_audio), bridge.output_sample_rate_hz or 16_000
 
 
@@ -144,12 +142,15 @@ def _browser_result(
     handoff = bool(audit.get("handoff"))
     outcome = audit.get("turn_outcome")
     response_status = (
-        f"/turn returned {outcome or 'handoff'}; Arm B safely suppressed answer audio."
+        f"/turn returned {outcome or 'handoff'}; BOA-approved handoff text was sent to the literal Gemini renderer."
         if handoff
         else "Approved /turn text was sent to the literal Gemini renderer."
     )
     return {
+        "session_id": audit.get("session_id"),
         "outcome": outcome,
+        "reason": audit.get("reason"),
+        "pii_redacted": bool(audit.get("pii_redacted")),
         "handoff": handoff,
         "response_status": response_status,
         "transcript": audit.get("input_transcript", ""),
@@ -184,9 +185,10 @@ async def health() -> dict[str, bool | str]:
 async def browser_turn(request: Request) -> JSONResponse:
     pcm = await _read_audio(request)
     request_id = uuid.uuid4().hex
+    session_id = request_boa_session_id(request.headers)
     try:
         audit, output_pcm, sample_rate_hz = await arm_b_runner(
-            pcm, VoiceSettings.from_env()
+            pcm, VoiceSettings.from_env(), session_id
         )
         result = _browser_result(audit, output_pcm, sample_rate_hz)
     except HTTPException:
@@ -196,4 +198,6 @@ async def browser_turn(request: Request) -> JSONResponse:
         raise HTTPException(
             502, f"Arm B could not complete this turn: {exc}"
         ) from exc
-    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    response_session_id = str(result.get("session_id") or session_id)
+    result["session_id"] = response_session_id
+    return JSONResponse(result, headers={"Cache-Control": "no-store", SESSION_HEADER: response_session_id})

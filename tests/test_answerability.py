@@ -221,3 +221,14 @@ def test_generate_turn_defers_to_generation_when_evidence_answers(monkeypatch) -
     done = json.loads([e[6:] for e in events if '"type": "done"' in e][0])
     assert done["outcome"] == "answer"
     assert done["reason"] == DecisionReason.DENSE_ANSWER.value
+
+
+def test_withdrawal_fee_evidence_cannot_answer_transfer_fee_request():
+    from core.answerability import lexical_verdict
+    hits = [{"text": (
+        "Banka shembull aplikon komision 2.00 për tërheqje cash me kartë "
+        "nga terminalet ATM jashtë shtetit."
+    )}]
+    assert lexical_verdict(
+        "Sa mban banka për me çu lekë jashtë?", hits,
+    ) == (False, "abstain_service_mismatch")

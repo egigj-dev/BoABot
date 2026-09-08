@@ -56,3 +56,13 @@ def test_dedup_rebuild_applies_same_year_sanitization():
     assert output[0].article is None
     assert output[0].text == "Teksti i aneksit"
     assert output[0].embedding is None
+
+
+def test_false_body_year_heading_is_removed_but_legitimate_text_is_preserved():
+    row = _row(
+        "2015",
+        "Rregullore_test.pdf — Neni 2015\nNeni 2015 \nTeksti i aneksit "
+        "për vitin 2015 dhe neni 15.",
+    )
+    output, _mapping, _stats = rebuild_chunks.build_output([row])
+    assert output[0].text == "Teksti i aneksit për vitin 2015 dhe neni 15."

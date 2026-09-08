@@ -21,6 +21,7 @@ from .rag import (API, MODEL, RAGError, api_key, grounded_messages, needs_rewrit
                  retrieve_evidence, rewrite)
 from .callcenter import (CARD_CLARIFY_MESSAGE, LEGAL_ADVICE_MESSAGE, DecisionEvent,
                         DecisionReason, Outcome, _is_hypothetical_rights,
+                        _is_product_capability_speech, _product_capability_message,
                         _structured_rate_decision, decide,
                         is_ambiguous_card_maintenance, next_structured_frame,
                         sessions)
@@ -248,7 +249,8 @@ def safe_sentences(text: str) -> list[str]:
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    from .env import feature_flag_states
+    return {"ok": True, "flags": feature_flag_states()}
 
 @app.get("/")
 def index():
@@ -608,6 +610,30 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                     )
                     rate_intent = decision.rate_intent
         yield emit({"type": "tool", "query": standalone_query})
+        # A bare-bank follow-up after the capability answer ("banka
+        # raiffeisen" right after "cfare produktesh ofrojne ato?") rewrites
+        # into "Çfarë produktesh ... ofron Banka Raiffeisen?". The capability
+        # gate fired pre-router on the RAW turn and missed it (no deictic/
+        # bank signal in the raw form), so re-check the REWRITTEN standalone
+        # query here — same pattern as the card-maintenance re-check below.
+        # [SUPERSEDED] These rewrites previously fell through to dense
+        # retrieval and abstained with NO_EVIDENCE_MESSAGE.
+        if rate_intent is None and _is_product_capability_speech(standalone_query):
+            decision = dataclasses.replace(
+                decision, rate_intent=None,
+                trace_flags=decision.trace_flags | frozenset({
+                    DecisionEvent.query_rewritten,
+                }),
+            )
+            sessions.record(
+                session, decision.question, _product_capability_message(),
+                Outcome.ANSWER,
+            )
+            outcome = Outcome.ANSWER
+            handoff_reason = DecisionReason.PRODUCT_CAPABILITY.value
+            yield from emit_policy_message(_product_capability_message())
+            yield done_event(outcome, reason=handoff_reason)
+            return
         if rate_intent is None and is_ambiguous_card_maintenance(standalone_query):
             sessions.record(
                 session, decision.question, CARD_CLARIFY_MESSAGE, Outcome.CLARIFY,
@@ -672,12 +698,47 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
 
         if rate_intent is not None:
             from .comparison import render_planned_rate_answer, render_rate_answer
+            from .env import feature_flag_states
 
             response_plan = getattr(decision, "response_plan", None)
-            answer = (
-                render_planned_rate_answer(response_plan, hits)
-                if response_plan is not None else render_rate_answer(rate_intent, hits)
+            # ---- Natural phrasing over structured rows (semantic stack ON) ----
+            # The exact renderer is the deterministic floor (flag-less default
+            # and any run without an LLM key). With the semantic stack enabled
+            # the SAME actionable rows go through grounded generation and the
+            # existing fidelity guard: the LLM phrases, the guard verifies each
+            # sentence against the row text. This is what turns "po per
+            # depozitat?" from a wall of numbers into a natural summary while
+            # keeping every value checkable. [SUPERSEDED] The renderer used to
+            # be the sole authority for this typed path.
+            _flags = feature_flag_states()
+            _has_key = bool(
+                os.environ.get("OPENROUTER_API_KEY")
+                or os.environ.get("DEEPSEEK_API_KEY")
             )
+            llm_over_rows = (_flags["BOABOT_LLM_ROUTER"]
+                             or _flags["BOABOT_LLM_ANSWERABILITY"]) and _has_key
+            answer_parts: list[str] = []
+            if llm_over_rows:
+                messages = grounded_messages(
+                    standalone_query, session.history, hits,
+                    support_level=support_level,
+                )
+                try:
+                    answer_parts = list(authorized_sentences(
+                        stream_answer(messages, session.session_id, usage), hits,
+                        prior_answer=session.last_answer,
+                    ))
+                except RAGError:
+                    # Generation path failed; fall back to the deterministic
+                    # renderer rather than degrade the turn.
+                    answer_parts = []
+            if not answer_parts:
+                answer = (
+                    render_planned_rate_answer(response_plan, hits)
+                    if response_plan is not None else render_rate_answer(rate_intent, hits)
+                )
+            else:
+                answer = " ".join(answer_parts).strip()
             if not answer:
                 abstain_reason = "structured_rate_empty_render"
                 outcome = Outcome.UNSUPPORTED
@@ -685,11 +746,14 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 answer = NO_EVIDENCE_MESSAGE
                 yield from emit_policy_message(answer)
             else:
-                # [SUPERSEDED] Structured rows previously flowed through
-                # grounded_messages -> stream_answer -> authorized_sentences.
-                # The exact renderer is now the authority for this typed path.
-                yield emit({"type": "token", "text": answer})
-                yield emit({"type": "approved_sentence", "text": answer})
+                if answer_parts:
+                    for index, sentence in enumerate(answer_parts):
+                        piece = sentence if index == 0 else f" {sentence}"
+                        yield emit({"type": "token", "text": piece})
+                        yield emit({"type": "approved_sentence", "text": sentence})
+                else:
+                    yield emit({"type": "token", "text": answer})
+                    yield emit({"type": "approved_sentence", "text": answer})
                 outcome = Outcome.ANSWER
                 handoff_reason = (
                     DecisionReason.STRUCTURED_ANSWER_AND_FOLLOW_UP.value

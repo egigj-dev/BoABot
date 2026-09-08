@@ -32,7 +32,8 @@ def test_page_exposes_arm_b_microphone_and_audit_controls() -> None:
 
 
 def test_browser_turn_runs_arm_b_and_returns_public_audit(monkeypatch) -> None:
-    async def fake_runner(pcm: bytes, _settings):
+    async def fake_runner(pcm: bytes, _settings, session_id: str):
+        assert session_id.startswith("voice-")
         assert pcm == b"\x00\x00" * 1_600
         return (
             {
@@ -72,14 +73,16 @@ def test_browser_turn_runs_arm_b_and_returns_public_audit(monkeypatch) -> None:
     assert "passage_text" not in str(result["sources"])
 
 
-def test_browser_turn_handoff_returns_no_audio(monkeypatch) -> None:
-    async def fake_runner(_pcm: bytes, _settings):
+def test_browser_turn_handoff_returns_approved_audio(monkeypatch) -> None:
+    async def fake_runner(_pcm: bytes, _settings, session_id: str):
+        assert session_id.startswith("voice-")
         return (
             {
                 "turn_outcome": "handoff", "handoff": True,
-                "input_transcript": "Kam nevojë për agjent.", "sources": [],
+                "input_transcript": "Kam nevojë për agjent.",
+                "approved_text": "Po ju lidh me një agjent.", "sources": [],
             },
-            b"",
+            b"\x00\x00" * 100,
             16_000,
         )
 
@@ -89,8 +92,8 @@ def test_browser_turn_handoff_returns_no_audio(monkeypatch) -> None:
     )
     assert response.status_code == 200
     assert response.json()["handoff"] is True
-    assert "safely suppressed answer audio" in response.json()["response_status"]
-    assert response.json()["audio"] is None
+    assert "BOA-approved handoff text" in response.json()["response_status"]
+    assert response.json()["audio"] is not None
 
 
 def test_browser_turn_rejects_non_wav_before_arm_b(monkeypatch) -> None:

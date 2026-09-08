@@ -34,7 +34,9 @@ from typing import Any
 
 from voice.arm_a.asr.azure_adapter import AzureStreamingASR
 from voice.shared.config import VoiceSettings
-from voice.shared.events import GenerationId, Transcript, TurnId, TurnRequest
+from voice.shared.events import GenerationId, Transcript, TurnId
+from voice.shared.boa_client import BoaClient
+from voice.shared.schemas import VoiceUserTurn
 from voice.shared.fidelity_guard import FidelityGuard
 from voice.shared.metrics import VoiceMetrics
 from voice.shared.confidence import CRITICAL_RE, ConfidenceAction, ConfidencePolicy
@@ -168,8 +170,8 @@ async def _preflight_turn(settings: VoiceSettings) -> str:
         if event.get("type") == "done" and isinstance(event.get("outcome"), str):
             saw_done_with_outcome = True
 
-    result = await client.run(
-        TurnRequest("Përshëndetje.", None, TurnId(0), include_vetted_text=False), inspect_event
+    result = await BoaClient(client).process_boa_turn(
+        VoiceUserTurn(None, "Përshëndetje.", "cascade", turn_id=TurnId(0)), inspect_event
     )
     if not saw_done_with_outcome:
         raise RuntimeError("/turn SSE stream had no done event with an outcome field")
@@ -277,7 +279,8 @@ def _assert_real_components(
 
 
 async def run_single(
-    audio_path: Path, out_dir: Path, settings: VoiceSettings
+    audio_path: Path, out_dir: Path, settings: VoiceSettings,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     pcm, duration_s, sample_rate_hz = _read_input_wav(audio_path)
@@ -293,6 +296,7 @@ async def run_single(
     asr = AzureStreamingASR(settings)
     tts = AzureTTS(settings)
     turn_service = TurnClient(settings.turn_base_url, settings.first_token_budget_ms)
+    boa_client = BoaClient(turn_service)
     _install_azure_event_signal_compat()
     _assert_real_components(asr, tts, turn_service)
 
@@ -532,10 +536,12 @@ async def run_single(
     renderer_task = asyncio.create_task(render_sentences())
 
     try:
-        result = await turn_service.run(
-            TurnRequest(transcript.text.strip(), None, TurnId(1), include_vetted_text=True),
+        result = await boa_client.process_boa_turn(
+            VoiceUserTurn(session_id, transcript.text, "cascade", turn_id=TurnId(1)),
             on_turn_event,
+            include_vetted_text=True,
         )
+        boa_finished = time.perf_counter()
     except BaseException:
         renderer_task.cancel()
         try:
@@ -595,6 +601,11 @@ async def run_single(
         ),
         "end_to_end_first_audio": round(end_to_end_first_audio_ms, 3),
         "end_to_end_complete": round(end_to_end_complete_ms, 3),
+        "speech_end_to_committed_turn": 0.0,
+        "boa_latency": round((boa_finished - turn_started) * 1_000, 3),
+        "committed_turn_to_first_audio": round(max(0.0, end_to_end_first_audio_ms - asr_final_ms), 3),
+        "speech_end_to_first_audio": round(max(0.0, end_to_end_first_audio_ms - duration_s * 1_000), 3),
+        "response_audio_duration": round(output_duration_s * 1_000, 3),
     }
     manifest_sources = [
         {key: source.get(key, "") for key in ("id", "doc", "article", "url")}
@@ -652,6 +663,9 @@ async def run_single(
         "turn_called": True,
         "turn_url": turn_service.url,
         "usage": result.done.usage,
+        "session_id": result.session_id,
+        "reason": result.reason,
+        "pii_redacted": result.pii_redacted,
     }
     (out_dir / "run.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

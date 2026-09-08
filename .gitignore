@@ -10,6 +10,7 @@ pipelineB
 pipelineC
 Shared_RAG_Architecture
 db/pgdata/
+boabot.egg-info/
 
 # Generated artifacts larger than 5 MB.
 embedded.parquet

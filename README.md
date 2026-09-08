@@ -26,7 +26,14 @@ rate_tables.jsonl, handoff_probe.json
 Install the dependencies declared in `pyproject.toml` (and `voice/requirements.txt` for live provider adapters), configure the retained environment files, then start:
 
 ```bash
-uvicorn core.api:app --host 127.0.0.1 --port 8000
+# Full behavior (LLM turn-router + answerability + structured-rate seam).
+# Without the flags below the assistant answers only deterministic floors and
+# falls back to lexical classification — greetings, rate lookups and transfer
+# fees then degrade or refuse. Check the live mode with /health (returns
+# "flags": {..., "BOABOT_COMPARISON_STRUCTURED": true, "BOABOT_LLM_ROUTER": true,
+# "BOABOT_LLM_ANSWERABILITY": true}).
+BOABOT_LLM_ROUTER=1 BOABOT_LLM_ANSWERABILITY=1 BOABOT_COMPARISON_STRUCTURED=1 \
+  .venv/bin/python -m uvicorn core.api:app --host 127.0.0.1 --port 8000
 ```
 
 Arm A is served with `uvicorn voice.arm_a.web_app:app --port 8100`; Arm B with `uvicorn voice.arm_b.web_app_b:app --port 8200`.

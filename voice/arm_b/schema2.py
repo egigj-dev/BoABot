@@ -13,12 +13,14 @@ from typing import Any, Protocol
 
 from ..shared.config import VoiceSettings
 from ..shared.correlation import CorrelationError, CorrelationRegistry
-from ..shared.events import AudioChunk, RenderRequest, Transcript, TurnRequest
+from ..shared.events import AudioChunk, RenderRequest, Transcript
 from ..shared.fidelity_guard import FidelityGuard
 from ..shared.metrics import VoiceMetrics
 from ..shared.sentence_buffer import SentenceBuffer
 from ..shared.confidence import CRITICAL_RE, ConfidenceAction, ConfidenceDecision, ConfidencePolicy
 from ..shared.telephony import CallControl
+from ..shared.boa_client import BoaTurnService, as_boa_client
+from ..shared.schemas import VoiceUserTurn
 from ..shared.turn_client import TurnService
 from ..shared.tts.base import TTS
 
@@ -241,12 +243,12 @@ class LiveTranscriber(Protocol):
 class ConstrainedLiveBridge:
     """Submit every finalized Live transcript to `/turn`; Live never authors output."""
 
-    def __init__(self, turn_client: TurnService, azure_tts: TTS,
+    def __init__(self, turn_client: BoaTurnService | TurnService, azure_tts: TTS,
                  call_control: CallControl, output_gate: OutputAudioGate,
                  registry: CorrelationRegistry, fidelity: FidelityGuard,
                  metrics: VoiceMetrics,
                  confidence_policy: ConfidencePolicy | None = None) -> None:
-        self.turn_client = turn_client
+        self.boa_client = as_boa_client(turn_client)
         self.azure_tts = azure_tts
         self.call_control = call_control
         self.output_gate = output_gate
@@ -303,11 +305,15 @@ class ConstrainedLiveBridge:
         renderer_task = (
             asyncio.create_task(render_stream()) if stream_during_turn else None
         )
-        request = TurnRequest(
-            transcript.text.strip(), session_id, turn_id, correlation_key=call_id,
+        user_turn = VoiceUserTurn(
+            session_id=session_id,
+            text=transcript.text,
+            source="s2s",
+            turn_id=turn_id,
+            correlation_key=call_id,
         )
         try:
-            result = await self.turn_client.run(request, on_event)
+            result = await self.boa_client.process_boa_turn(user_turn, on_event)
         except BaseException:
             if renderer_task is not None:
                 for render_id in self.registry.active_render_ids(call_id):
@@ -427,7 +433,7 @@ class ConstrainedLiveBridge:
         render_ids = self.registry.active_render_ids(call_id)
         self.output_gate.clear()
         self.registry.require(call_id)
-        await self.turn_client.cancel(call_id)
+        await self.boa_client.cancel(call_id)
         for render_request_id in render_ids:
             await self.azure_tts.cancel(render_request_id)
         self.registry.invalidate_generation(call_id)

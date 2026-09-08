@@ -35,7 +35,8 @@ def test_page_exposes_microphone_pcm_and_playback_controls() -> None:
 
 
 def test_browser_turn_runs_arm_a_and_returns_safe_public_result(monkeypatch) -> None:
-    async def fake_runner(audio_path: Path, out_dir: Path, _settings):
+    async def fake_runner(audio_path: Path, out_dir: Path, _settings, session_id: str):
+        assert session_id.startswith("voice-")
         assert audio_path.read_bytes() == _wav()
         out_dir.mkdir(parents=True)
         (out_dir / "answer.wav").write_bytes(_wav(250))

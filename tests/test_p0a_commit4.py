@@ -23,6 +23,7 @@ def test_frame_effect_and_next_structured_frame_mapping() -> None:
     replace = {
         DecisionReason.CATALOG_EXACT_HIT,
         DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+        DecisionReason.TRANSFER_CONTEXT_ESTABLISHED,
     }
     preserve = {
         DecisionReason.REPEAT,

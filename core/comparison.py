@@ -341,6 +341,13 @@ _CERTIFIABLE_RESIDUE = _QUERY_STOPWORDS | frozenset({
     # Discourse/interest verbs (c23 lead "Me interesojn ...") + "dua te marr".
     "interesoj", "interesojn", "intereson", "interesojne", "interesohem",
     "jane", "eshte", "marr", "marrje", "mora",
+    # Intent-phrase and deictic surfaces that add no slot semantics:
+    # "dua te informohem per normat e interesit" (intent verb),
+    # "prej bankave" / "ato" (the banks just listed). fold() has already
+    # stripped diacritics by the time coverage runs, so plain and accented
+    # spellings are both listed for readability.
+    "informohem", "informoj", "informeshem", "informacion", "informacionin",
+    "deshiroj", "dëshiroj", "bankave", "bankas", "ato", "keto", "këto",
 })
 _COVERAGE_TOKEN_RE = re.compile(r"[^\W_]+|%", re.UNICODE)
 _CERTIFIABLE_TERM_RE = re.compile(
@@ -500,8 +507,13 @@ def _explicit_unknown_bank(folded_question: str, known_banks: tuple[str, ...]) -
     # "Banka/Banken Xyzzy": a bounded phrase after the bank noun must either
     # contain a trusted alias or be an all-bank phrase. Offer verbs bound the
     # tail too — "cila banke ofron interesin..." must not read "ofron" as a
-    # possible bank name.
+    # possible bank name. Deictic plurals ("keto/këto banka" = "these banks",
+    # "ato banka" = "those banks") refer back to the banks just listed in the
+    # conversation — they are all-bank references, not unknown names; skip the
+    # unknown-bank tail probe for them.
     for match in _BANK_WORD_RE.finditer(folded_question):
+        if re.search(r"\b(?:keto|këto|ato)\s+bank\w*\b", folded_question):
+            return False
         tail = folded_question[match.end():]
         tail = re.split(
             r"[,;?]|\b(?:per|me|ka|ofron\w*|ofroj\w*|japin|jep|"
