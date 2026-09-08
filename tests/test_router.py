@@ -152,12 +152,19 @@ def test_router_catalog_label_on_fee_question_falls_through_to_retrieval(monkeyp
     assert decision.question  # falls through to retrieval intact
 
 
-def test_catalog_empty_names_degrades_to_normal_answer_path(monkeypatch) -> None:
+def test_catalog_empty_names_still_answers_from_register(monkeypatch) -> None:
+    # After institution-identity centralisation (4d3c7c1) the catalog message
+    # comes from the BoA licensed-institutions register
+    # (institution_catalog_message), NOT from bank_names() (the 14 short
+    # scrape labels). Emptying bank_names no longer empties the catalog, so the
+    # fail-closed answer path still produces the register list. The old
+    # contract ('empty names -> fall through to retrieval') is obsolete.
     _inject(monkeypatch, "catalog")
     monkeypatch.setattr(callcenter, "bank_names", lambda: ())
     decision = decide("cilat banka operojne ne shqiperi?", "", [])
-    assert decision.outcome is None
-    assert decision.question
+    assert decision.outcome is Outcome.ANSWER
+    assert decision.reason is DecisionReason.BANK_CATALOG_LIST
+    assert decision.message.startswith("Bankat e licencuara")
 
 
 def test_catalog_lexical_floor_does_not_capture_one_bank_tariffs() -> None:
