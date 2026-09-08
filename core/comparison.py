@@ -300,6 +300,24 @@ PRODUCT_FAMILY: dict[str, frozenset[Product]] = {
     "card": frozenset({"debit_card", "credit_card"}),
     "deposit": frozenset({"deposit"}),
 }
+
+# Display labels for the rate-table `category` field. The raw values are
+# transcribed verbatim from BoA tables and are ASCII-lossy; two keys name the
+# same product because the fees table and the rates table label it differently
+# ("Kredi per shtepi" in Komisionet për individë, "KREDI PER SHTEPI/PRONA" in
+# Normat nominale dhe NEI). Folding them here is a display decision — the rows
+# stay traceable to their source table.
+CATEGORY_LABELS: dict[str, tuple[str, str]] = {
+    "Kredi konsumatore te pasiguruara": ("kredi konsumatore të pasiguruara", "credit"),
+    "Kredi konsumatore me hipoteke":    ("kredi konsumatore me hipotekë",    "credit"),
+    "Kredi per shtepi":                 ("kredi për shtëpi/prona",           "credit"),
+    "KREDI PER SHTEPI/PRONA":           ("kredi për shtëpi/prona",           "credit"),
+    "Depozita për individë":            ("depozita për individë",            "deposit"),
+    "Karte krediti":                    ("kartë krediti",                    "card"),
+    "Karte debiti":                     ("kartë debiti",                     "card"),
+    "Biznes i vogel":                   ("biznes i vogël",                   "business"),
+}
+
 _FAMILY_OF: dict[Product, str] = {
     "consumer_credit_unsecured": "consumer_credit",
     "consumer_credit_mortgage": "consumer_credit",

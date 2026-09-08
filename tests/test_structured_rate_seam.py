@@ -250,6 +250,27 @@ def test_catalog_schema_and_typed_coverage_audit() -> None:
                    for product, metric, _event, _value in keys)
 
 
+# Task E: every distinct `category` value in rate_tables.jsonl must have a
+# display label. This fails loudly when BoA adds a category — that is the point.
+def test_every_rate_table_category_has_display_label() -> None:
+    categories = {
+        str(row.get("category") or "") for row in comparison._rate_rows()
+    }
+    categories.discard("")
+    assert categories, "rate tables must carry at least one category"
+    missing = categories - set(comparison.CATEGORY_LABELS)
+    assert not missing, f"categories without a display label: {sorted(missing)}"
+
+
+def test_category_labels_fold_duplicate_housing_keys() -> None:
+    # "Kredi per shtepi" (fees table) and "KREDI PER SHTEPI/PRONA" (rates
+    # table) are the same product labeled differently; both fold to one
+    # display label + credit family.
+    assert comparison.CATEGORY_LABELS["Kredi per shtepi"] == \
+        comparison.CATEGORY_LABELS["KREDI PER SHTEPI/PRONA"]
+    assert comparison.CATEGORY_LABELS["KREDI PER SHTEPI/PRONA"][1] == "credit"
+
+
 def test_api_structured_path_bypasses_all_llm_rewrite_and_fidelity(monkeypatch) -> None:
     # Deterministic floor contract: with the structured seam ON but the
     # semantic stack OFF (no router/answerability key), the typed path must
