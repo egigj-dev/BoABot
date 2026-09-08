@@ -130,8 +130,12 @@ def test_router_off_catalog_uses_lexical_fallback(monkeypatch) -> None:
     decision = decide("cilat banka operojne ne shqiperi?", "", [])
     assert decision.outcome is Outcome.ANSWER
     assert decision.reason is DecisionReason.BANK_CATALOG_LIST
-    assert decision.message.startswith("Bankat tregtare në Shqipëri janë: ")
-    assert "Credins, OTP." in decision.message
+    # The catalog message comes from the licensed-institutions register
+    # (4d3c7c1) using canonical names, not from the short scrape labels, so
+    # the prefix is "Bankat e licencuara" and both banks appear by full name.
+    assert decision.message.startswith("Bankat e licencuara dhe dega e bankës së huaj në Shqipëri janë: ")
+    assert "Banka Credins" in decision.message
+    assert "Banka OTP Albania" in decision.message
     assert decision.message.endswith(
         "Burimi: Regjistri i subjekteve të licencuara — Banka e Shqipërisë.")
 
