@@ -271,6 +271,83 @@ def test_category_labels_fold_duplicate_housing_keys() -> None:
     assert comparison.CATEGORY_LABELS["KREDI PER SHTEPI/PRONA"][1] == "credit"
 
 
+# ---- Task F: category enumeration in the product clarifies ---------------
+
+def test_category_enumeration_filters_by_family_and_dedupes() -> None:
+    # credit family: three display labels, housing keys deduped, ≤4.
+    from core.comparison import RateIntent
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="interest_rate",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family="credit",
+    )
+    enumerated = comparison._category_enumeration(intent, ())
+    assert enumerated == (
+        "kredi konsumatore të pasiguruara",
+        "kredi konsumatore me hipotekë",
+        "kredi për shtëpi/prona",
+    )
+    assert len(enumerated) <= comparison._CATEGORY_ENUMERATION_CAP
+
+
+def test_category_enumeration_none_family_falls_back() -> None:
+    # No family -> no principled filter; must return None (caller keeps the
+    # original message), never eight categories read aloud.
+    from core.comparison import RateIntent
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="interest_rate",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family=None,
+    )
+    assert comparison._category_enumeration(intent, ()) is None
+
+
+def test_missing_product_clarify_enumerates_credit_categories(monkeypatch) -> None:
+    # The "name the product" clarify must enumerate the credit categories
+    # when the family is known (voice-safe, ≤4, deduped).
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    from core.comparison import RateIntent, ResponseMode
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="interest_rate",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family="credit",
+    )
+    plan = comparison.plan_structured_response(
+        "cfare lloje kredish?",
+        comparison.RateParse("unsupported", intent, "missing_product", None),
+    )
+    assert plan is not None
+    assert plan.mode is ResponseMode.CLARIFY
+    assert "Në tabelat e publikuara ka" in plan.message
+    assert "kredi për shtëpi/prona" in plan.message
+    assert "Cilën prej tyre?" in plan.message
+    # no wall: the enumeration list appears once, not eight times
+    assert len([w for w in ("kredi konsumatore të pasiguruara",
+                            "kredi konsumatore me hipotekë",
+                            "kredi për shtëpi/prona") if w in plan.message]) == 3
+
+
+def test_unrepresented_semantics_clarify_falls_back_without_family(monkeypatch) -> None:
+    # family None -> fall back to the exact original message, no enumeration.
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    from core.comparison import RateIntent, ResponseMode
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric=None,
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family=None,
+    )
+    plan = comparison.plan_structured_response(
+        "nuk kuptoj cfare po pyes",
+        comparison.RateParse("unsupported", intent, "unrepresented_semantics", None),
+    )
+    assert plan is not None
+    assert plan.mode is ResponseMode.CLARIFY
+    assert plan.message == (
+        "Nuk mund ta lidh me siguri këtë kërkesë me tabelat e publikuara. "
+        "Mund të tregoni bankën, produktin ose dimensionin që ju intereson?"
+    )
+
+
 def test_api_structured_path_bypasses_all_llm_rewrite_and_fidelity(monkeypatch) -> None:
     # Deterministic floor contract: with the structured seam ON but the
     # semantic stack OFF (no router/answerability key), the typed path must

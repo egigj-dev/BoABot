@@ -1700,6 +1700,44 @@ _PRODUCT_SCOPE_LABELS = {
     "credit_card": "karta krediti",
 }
 
+# Hard cap for a spoken clarify enumeration. The system has a voice arm;
+# eight categories read aloud is unusable, and a wall is worse than the
+# original clarify.
+_CATEGORY_ENUMERATION_CAP = 4
+
+
+def _category_enumeration(
+        intent: RateIntent, known_slots: tuple[str, ...],
+        ) -> tuple[str, ...] | None:
+    """Display labels for the rate-table categories relevant to this intent.
+
+    Filters by the intent's family when one is known (from CATEGORY_LABELS
+    values), dedupes on the display label (so the two housing keys collapse
+    to one), and hard-caps the list at ``_CATEGORY_ENUMERATION_CAP``.
+    Returns None when nothing can be said safely — no family, more than the
+    cap, or an empty list — and the caller keeps its exact clarify message.
+    """
+    family = intent.family
+    if family is None:
+        # With no family there is no principled filter; listing all eight
+        # categories read aloud is unusable. Fall back to the caller's message.
+        return None
+    labels: list[tuple[str, str]] = []
+    for category, (label, label_family) in CATEGORY_LABELS.items():
+        if label_family != family:
+            continue
+        labels.append((label, category))
+    if not labels:
+        return None
+    # Dedupe on display label, keep the FIRST source category (stable order).
+    by_label: dict[str, str] = {}
+    for label, category in labels:
+        by_label.setdefault(label, category)
+    enumerated = tuple(by_label.keys())
+    if len(enumerated) > _CATEGORY_ENUMERATION_CAP:
+        return None
+    return enumerated
+
 
 def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan | None:
     """Choose a response mode from typed slots and observed source diversity."""
@@ -1740,11 +1778,36 @@ def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan |
                                     missing_slots=("product",), supported_scope=(str(product),),
                                     follow_up_target=() if mode is ResponseMode.ANSWER else (_follow_up_targets(complexity) or ("term_months",)),
                                     complexity=complexity)
+        # Task F: a "name the product" clarify should enumerate the available
+        # categories instead of leaving the user to guess the vocabulary. Only
+        # when a family is known, dedupe≤4 (voice-safe); otherwise keep the
+        # exact original message.
+        enumerated = _category_enumeration(intent, known_slots)
+        if enumerated:
+            listed = ", ".join(enumerated)
+            message = (
+                f"Për normat e interesit më duhet produkti. Në tabelat e "
+                f"publikuara ka {listed}. Cilën prej tyre?"
+            )
+        else:
+            message = "Për normat e interesit më duhet produkti, sepse të dhënat ndryshojnë sipas produktit."
         return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots, missing_slots=("product",),
-                            message="Për normat e interesit më duhet produkti, sepse të dhënat ndryshojnë sipas produktit.")
+                            message=message)
     if parsed.reason == "unrepresented_semantics":
+        # Task F: with a known family, enumerate the available categories in
+        # the clarify; without one (family None), keep the exact original
+        # message — never list all eight read aloud.
+        enumerated = _category_enumeration(intent, known_slots)
+        if enumerated:
+            listed = ", ".join(enumerated)
+            message = (
+                f"Nuk mund ta lidh me siguri këtë kërkesë me tabelat e "
+                f"publikuara. Në tabelat ka {listed}. Cilën prej tyre?"
+            )
+        else:
+            message = "Nuk mund ta lidh me siguri këtë kërkesë me tabelat e publikuara. Mund të tregoni bankën, produktin ose dimensionin që ju intereson?"
         return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots,
-                            message="Nuk mund ta lidh me siguri këtë kërkesë me tabelat e publikuara. Mund të tregoni bankën, produktin ose dimensionin që ju intereson?")
+                            message=message)
     if parsed.reason == "missing_key":
         return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots, message=NO_EVIDENCE_MESSAGE)
     return None
