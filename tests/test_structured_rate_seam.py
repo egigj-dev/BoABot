@@ -781,11 +781,13 @@ def test_card_availability_is_scoped_to_extracted_product(monkeypatch, question,
     assert offers == {parsed.intent.banks[0]: False}
 
 
-# ---- Task AD: missing_key clarify asks what is missing (never refuses) ----
+# ---- Task AD/AH: missing_key clarify asks what is missing (never refuses) ----
 # A missing_key CLARIFY that renders NO_EVIDENCE_MESSAGE leaves the user with
 # no question to answer; every slot reply then terminally refuses (Step 12 AB).
-# The branch must ask for the missing dimension by name and never fall back to
-# the refusal message.
+# The branch must ask for the missing dimension BY NAME and never fall back to
+# the refusal message. Task AH: "më duhet" takes the NOMINATIVE (monedha,
+# afati, shuma, segmenti) and asks for a VALUE ("Për cilin afat po pyesni?"),
+# not a choice among dimension names.
 @pytest.mark.parametrize("question", [
     "cila banke ka normen me te mire per kredi konsumatore?",
     "cilat jane normat e interesit per kredi konsumatore?",
@@ -801,6 +803,11 @@ def test_missing_key_clarify_asks_for_the_missing_dimension(question) -> None:
         comparison.NO_EVIDENCE_MESSAGE, "",  # never the refusal-as-clarify
     )
     assert plan.message.rstrip().endswith("?")
-    # names at least the missing dimension (voice-safe: some 'më duhet ...')
-    assert "Më duhet" in plan.message
+    # names the missing dimension in the NOMINATIVE (më duhet X)
+    assert "më duhet monedha" in plan.message or "më duhet afati" in plan.message \
+        or "më duhet shuma" in plan.message or "më duhet segmenti" in plan.message
+    # asks for a VALUE, not a choice among dimension names
+    assert "cil" in plan.message.lower() and "prej tyre" not in plan.message
     assert "Nuk gjeta burim mjaftueshëm" not in plan.message
+    assert plan.message.count("?") == 1
+    assert plan.message.count("më duhet") == 1  # one dimension at a time
