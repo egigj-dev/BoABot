@@ -1708,23 +1708,37 @@ _CATEGORY_ENUMERATION_CAP = 4
 
 def _category_enumeration(
         intent: RateIntent, known_slots: tuple[str, ...],
+        metric: str | None = None,
         ) -> tuple[str, ...] | None:
     """Display labels for the rate-table categories relevant to this intent.
 
-    Filters by the intent's family when one is known (from CATEGORY_LABELS
-    values), dedupes on the display label (so the two housing keys collapse
-    to one), and hard-caps the list at ``_CATEGORY_ENUMERATION_CAP``.
-    Returns None when nothing can be said safely — no family, more than the
-    cap, or an empty list — and the caller keeps its exact clarify message.
+    Filters by the intent's family (from CATEGORY_LABELS values) AND by the
+    metric when one is given: a category only qualifies if it has rows with
+    that metric (``_row_slots().metric``). Filtering is done on the raw
+    ``category`` keys BEFORE folding display labels — ``Kredi per shtepi``
+    (fees) and ``KREDI PER SHTEPI/PRONA`` (rates) share one label but have
+    disjoint coverage, so folding first would present a merged label as
+    having both. Dedupes on the display label and hard-caps the list at
+    ``_CATEGORY_ENUMERATION_CAP``. Returns None when nothing can be said
+    safely — no family, no metric-qualifying category, more than the cap —
+    and the caller keeps its exact clarify message.
     """
     family = intent.family
     if family is None:
         # With no family there is no principled filter; listing all eight
         # categories read aloud is unusable. Fall back to the caller's message.
         return None
+    # Which raw categories carry the requested metric? Cache per call.
+    categories_with_metric = set()
+    if metric is not None:
+        for row in _rate_rows():
+            if _row_slots(row).metric == metric:
+                categories_with_metric.add(str(row.get("category") or ""))
     labels: list[tuple[str, str]] = []
     for category, (label, label_family) in CATEGORY_LABELS.items():
         if label_family != family:
+            continue
+        if metric is not None and category not in categories_with_metric:
             continue
         labels.append((label, category))
     if not labels:
@@ -1782,7 +1796,7 @@ def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan |
         # categories instead of leaving the user to guess the vocabulary. Only
         # when a family is known, dedupe≤4 (voice-safe); otherwise keep the
         # exact original message.
-        enumerated = _category_enumeration(intent, known_slots)
+        enumerated = _category_enumeration(intent, known_slots, metric=intent.metric)
         if enumerated:
             listed = ", ".join(enumerated)
             message = (
@@ -1797,7 +1811,7 @@ def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan |
         # Task F: with a known family, enumerate the available categories in
         # the clarify; without one (family None), keep the exact original
         # message — never list all eight read aloud.
-        enumerated = _category_enumeration(intent, known_slots)
+        enumerated = _category_enumeration(intent, known_slots, metric=intent.metric)
         if enumerated:
             listed = ", ".join(enumerated)
             message = (

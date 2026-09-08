@@ -274,7 +274,8 @@ def test_category_labels_fold_duplicate_housing_keys() -> None:
 # ---- Task F: category enumeration in the product clarifies ---------------
 
 def test_category_enumeration_filters_by_family_and_dedupes() -> None:
-    # credit family: three display labels, housing keys deduped, ≤4.
+    # credit family, NO metric filter: three display labels, housing keys
+    # deduped, ≤4.
     from core.comparison import RateIntent
     intent = RateIntent(
         bank_scope="all", banks=(), product=None, metric="interest_rate",
@@ -290,6 +291,53 @@ def test_category_enumeration_filters_by_family_and_dedupes() -> None:
     assert len(enumerated) <= comparison._CATEGORY_ENUMERATION_CAP
 
 
+# ---- Task I: enumeration must be scoped to the metric being asked ---------
+
+def test_category_enumeration_interest_rate_credit_yields_only_covered() -> None:
+    # For interest_rate, only KREDI PER SHTEPI/PRONA has rate rows among the
+    # credit categories (the fee categories live in Komisionet për individë).
+    # Offering the fee options would suggest a dead end — the interest-rate
+    # clarify must offer only what interest-rate rows can serve.
+    from core.comparison import RateIntent
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="interest_rate",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family="credit",
+    )
+    enumerated = comparison._category_enumeration(intent, (), metric="interest_rate")
+    assert enumerated == ("kredi për shtëpi/prona",)
+
+
+def test_category_enumeration_fee_metric_yields_fee_categories() -> None:
+    # For fee, the credit categories with fee/penalty rows qualify; the
+    # housing keys fold to one label.
+    from core.comparison import RateIntent
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="fee",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family="credit",
+    )
+    enumerated = comparison._category_enumeration(intent, (), metric="fee")
+    assert enumerated == (
+        "kredi konsumatore të pasiguruara",
+        "kredi konsumatore me hipotekë",
+        "kredi për shtëpi/prona",
+    )
+    assert len(enumerated) <= comparison._CATEGORY_ENUMERATION_CAP
+
+
+def test_category_enumeration_metric_with_no_qualifying_rows_falls_back() -> None:
+    # A metric with no credit rows -> empty after filtering -> None (caller
+    # keeps the original message), never an empty enumeration.
+    from core.comparison import RateIntent
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="penalty",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family="deposit",
+    )
+    assert comparison._category_enumeration(intent, (), metric="penalty") is None
+
+
 def test_category_enumeration_none_family_falls_back() -> None:
     # No family -> no principled filter; must return None (caller keeps the
     # original message), never eight categories read aloud.
@@ -303,8 +351,9 @@ def test_category_enumeration_none_family_falls_back() -> None:
 
 
 def test_missing_product_clarify_enumerates_credit_categories(monkeypatch) -> None:
-    # The "name the product" clarify must enumerate the credit categories
-    # when the family is known (voice-safe, ≤4, deduped).
+    # The "name the product" interest-rate clarify must enumerate only the
+    # credit category with interest-rate rows (voice-safe, ≤4, deduped,
+    # metric-scoped): KREDI PER SHTEPI/PRONA alone.
     monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
     from core.comparison import RateIntent, ResponseMode
     intent = RateIntent(
@@ -321,10 +370,10 @@ def test_missing_product_clarify_enumerates_credit_categories(monkeypatch) -> No
     assert "Në tabelat e publikuara ka" in plan.message
     assert "kredi për shtëpi/prona" in plan.message
     assert "Cilën prej tyre?" in plan.message
-    # no wall: the enumeration list appears once, not eight times
-    assert len([w for w in ("kredi konsumatore të pasiguruara",
-                            "kredi konsumatore me hipotekë",
-                            "kredi për shtëpi/prona") if w in plan.message]) == 3
+    # metric-scoped: the fee-only credit categories are NOT offered, because
+    # the interest-rate clarify must never suggest a category with no rate rows.
+    assert "kredi konsumatore të pasiguruara" not in plan.message
+    assert "kredi konsumatore me hipotekë" not in plan.message
 
 
 def test_unrepresented_semantics_clarify_falls_back_without_family(monkeypatch) -> None:
