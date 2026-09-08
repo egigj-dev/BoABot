@@ -34,6 +34,12 @@ def test_requested_fact_categories_are_explicit():
         "Sa është tarifa për transfertën?": answerability.RequestedFact.FEE_AMOUNT,
         "Cilat janë tarifat për transfertat?": answerability.RequestedFact.FEE_AMOUNT,
         "Sa është norma e interesit?": answerability.RequestedFact.INTEREST_RATE,
+        # Step 2 regression: "cilat jane normat" must reach INTEREST_RATE,
+        # not fall through to the offer-verb PRODUCT_AVAILABILITY branch.
+        "Cilat janë normat e interesit qe ofrojne?":
+            answerability.RequestedFact.INTEREST_RATE,
+        "Cilat janë normat e interesit?":
+            answerability.RequestedFact.INTEREST_RATE,
         "Cila bankë ka normën më të ulët?":
             answerability.RequestedFact.COMPARISON_RANKING,
         "A ofron banka kredi për udhëtime?":

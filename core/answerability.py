@@ -167,7 +167,7 @@ def _price_ask(question: str) -> bool:
     return (
         any(term in folded for term in PRICE_INTENT)
         or re.search(r"\bsa\s+(?:me\s+)?mban\b", folded) is not None
-        or re.search(r"\bcilat?\s+jane\s+(?:tarif|komision|kosto)\w*", folded)
+        or re.search(r"\bcilat?\s+jane\s+(?:tarif|komision|kosto|interes|norm)\w*", folded)
         is not None
     )
 
