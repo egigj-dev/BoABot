@@ -15,7 +15,7 @@ No code changed in this pass; the deliverable is this table.
 | tests/test_callcenter.py::test_unknown_transfer_outranks_fee_and_benign_process_phrase_does_not | REAL | The transfer-fee seam's designed escape hatch (`_TRANSFER_PROCEDURE_RE`, callcenter.py) matches `procedur\w*` but not `proces\w*`, so the benign phrase "Nuk e njoh mirë procesin e transfertës." (a process question) is hijacked into `TRANSFER_CONTEXT_ESTABLISHED` instead of falling to dense as the test requires. | A user asking "I don't know the transfer process well" gets the fee-scope clarify ("Brenda apo jashtë vendit?") instead of an informational/process answer. Fix: add `proces\w*` to the procedure bail-out vocabulary. |
 | tests/test_conversational_fixes.py::test_business_renderer_states_attribution_boundary | STALE | business-rate renderer attribution prose changed (b05d53f era); test asserts the old phrase „nuk i atribuon çdo shifër normës nominale apo NEI-së" but the renderer now emits a different, equally honest attribution sentence. | — |
 | tests/test_p0a_commit3.py::test_unbanked_credit_superlative_falls_through_dense | UNCLEAR | Open product decision: should `missing_key` CLARIFY (current behaviour, enumerating via Task F) or fall through to dense (the test's asserted contract)? The fixture matches the pre-plan contract, but nobody has decided which is correct — see the documented seam-gaps item "unsupported is terminal". | — |
-| tests/test_p0a_commit4.py::test_frame_effect_and_next_structured_frame_mapping | STALE | the test's `replace` set omits `DecisionReason.STRUCTURED_PLANNER_CLARIFY`, which frame_effect deliberately maps to REPLACE (callcenter.py:205) — this is the open "frame_effect" out-of-scope item, not a code accident; the fixture encodes the pre-REPLACE contract. | — |
+| tests/test_p0a_commit4.py::test_frame_effect_and_next_structured_frame_mapping | UNCLEAR | Open product decision: should `STRUCTURED_PLANNER_CLARIFY` REPLACE the structured frame (current behaviour, callcenter.py:205) or CLEAR it (test's asserted contract)? REPLACE-on-clarify is the open "frame_effect" item — a clarify persisting its unresolved intent is the suspected defect, measure-before-fix. Cannot be STALE while the behaviour itself is undecided. | — |
 | tests/test_p0a_commit7.py::test_unrepresented_qualifier_trace_is_constructed_at_seam | UNCLEAR | Open product decision: should the availability-qualifier case ("a ofrojne kredi per udhetime?") CLARIFY (current behaviour, critic-review item 1's approved direction per the structured seam) or fall through to dense (the test's asserted contract)? The reviewer's fix direction said dense fall-through; the planner now CLARIFYs. Undecided. | — |
 | tests/test_router.py::test_catalog_empty_names_degrades_to_normal_answer_path | STALE | institution-identity centralisation (4d3c7c1) moved the catalog to the licensed-institutions register; `bank_names()=()` no longer empties the catalog, so the degrade-to-retrieval premise no longer holds. | — |
 | tests/test_router.py::test_router_off_catalog_uses_lexical_fallback | STALE | catalog wording changed to „Bankat e licencuara dhe dega e bankës së huaj në Shqipëri janë: …" (4d3c7c1 register provenance); the test asserts the old „Bankat tregtare …" prefix. | — |
@@ -25,16 +25,16 @@ No code changed in this pass; the deliverable is this table.
 
 ## Summary
 
-- STALE: 7
+- STALE: 6
 - REAL: 1 (`test_unknown_transfer_outranks_fee_and_benign_process_phrase_does_not` — fixed by commit 769d852, Task T, after this table was written)
-- UNCLEAR: 2 (`test_p0a_commit3…`, `test_p0a_commit7…`)
+- UNCLEAR: 3 (`test_p0a_commit3…`, `test_p0a_commit7…`, `test_p0a_commit4…`)
 
-The 7 STALE are all traceable to a specific committed behaviour change
+The 6 STALE are all traceable to a specific committed behaviour change
 (response-planning 10963c5, institution identity 4d3c7c1, attribution b05d53f,
 product-evidence a70f76b, incident gate) with the fixture never synced — a
 fixture-sync commit is owed for each (Task V, one commit per fixture).
 
-The 2 UNCLEAR are open product decisions, not stale assertions:
+The 3 UNCLEAR are open product decisions, not stale assertions:
 
 1. **missing_key → CLARIFY or dense?** Current behaviour: `missing_key`
    produces a `STRUCTURED_PLANNER_CLARIFY` (with Task-F enumeration). The test
