@@ -1772,7 +1772,7 @@ def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan |
         if intent.availability or re.search(r"\bte\s+gjitha\b", fold(question)):
             return ResponsePlan(ResponseMode.ANSWER, intent, known_slots, complexity=complexity)
         targets = _follow_up_targets(complexity)
-        if targets and complexity.row_count > 4:
+        if targets and complexity.row_count > 4 and intent.product is not None:
             return ResponsePlan(ResponseMode.ANSWER_AND_FOLLOW_UP, intent, known_slots,
                                 supported_scope=(str(intent.product),) if intent.product else (),
                                 follow_up_target=targets, complexity=complexity)
@@ -1973,7 +1973,11 @@ def render_planned_rate_answer(plan: ResponsePlan, hits: list[dict]) -> str:
     elif "customer_segment" in plan.follow_up_target:
         variation = " Ato ndryshojnë sipas segmentit të klientit."
         follow_up = " Për individë apo biznese?"
-    return f"Për {banks} kam {metric} për {scope}.{variation}{follow_up}"
+    # An empty supported_scope must never render a bare preposition ("për .").
+    # Defensive guard: with no product scope, state the metric without the
+    # scope clause rather than emitting malformed Albanian.
+    scope_clause = f" për {scope}" if scope else ""
+    return f"Për {banks} kam {metric}{scope_clause}.{variation}{follow_up}"
 
 def _render_business_rate_answer(intent: RateIntent, hits: list[dict]) -> str:
     """Render the business nominal/NEI table as reported (rule 5: no kredi).

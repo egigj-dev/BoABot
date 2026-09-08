@@ -397,6 +397,52 @@ def test_unrepresented_semantics_clarify_falls_back_without_family(monkeypatch) 
     )
 
 
+# ---- Task Q-a: empty supported_scope must never render "për ." ------------
+# Task P settled: the deterministic renderer produced the malformed
+# "kam norma të publikuara për ." (empty scope) on the resolved branch when
+# intent.product is None. Two guards: the resolved branch falls back to
+# ANSWER mode, and the renderer omits a dangling scope clause defensively.
+def test_render_planned_never_emits_bare_preposition() -> None:
+    from core.comparison import (RateIntent, ResponseMode, ResponsePlan,
+                                 ResultComplexity)
+    intent = RateIntent(
+        bank_scope="all", banks=("Banka Credins",), product=None,
+        metric="interest_rate", fee_event=None, value_type=None,
+        term_months=None, amount_band=None, breadth="product_metric",
+        family="credit",
+    )
+    complexity = ResultComplexity(
+        row_count=6, bank_count=0, product_count=1, metric_count=1,
+        fee_event_count=0, maturity_band_count=6, term_count=6,
+        amount_band_count=0, currency_count=1, customer_segment_count=1,
+        value_type_count=0,
+    )
+    plan = ResponsePlan(
+        ResponseMode.ANSWER_AND_FOLLOW_UP, intent,
+        known_slots=("bank", "metric"), supported_scope=(),
+        follow_up_target=("term_months",), complexity=complexity,
+    )
+    rendered = comparison.render_planned_rate_answer(
+        plan, [{"text": "placeholder"}],
+    )
+    assert "për ." not in rendered
+    assert "kam norma të publikuara." in rendered  # no dangling preposition
+
+
+def test_resolved_branch_without_product_falls_back_to_answer(monkeypatch) -> None:
+    # "cilat jane normat e interesit per kredi?" resolves with product=None;
+    # ANSWER_AND_FOLLOW_UP and its scope sentence require a product, so the
+    # plan must fall back to plain ANSWER rather than emit an empty scope.
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    from core.comparison import ResponseMode
+    parsed = comparison.parse_rate_intent("cilat jane normat e interesit per kredi?")
+    assert parsed.status == "resolved"
+    assert parsed.intent is not None and parsed.intent.product is None
+    plan = comparison.plan_structured_response("cilat jane normat e interesit per kredi?", parsed)
+    assert plan is not None
+    assert plan.mode is ResponseMode.ANSWER
+
+
 def test_api_structured_path_bypasses_all_llm_rewrite_and_fidelity(monkeypatch) -> None:
     # Deterministic floor contract: with the structured seam ON but the
     # semantic stack OFF (no router/answerability key), the typed path must
