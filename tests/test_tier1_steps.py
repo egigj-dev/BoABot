@@ -201,3 +201,11 @@ def test_source_citation_includes_issuer() -> None:
 def test_system_prompt_bans_invented_dates() -> None:
     assert "Mos shpik data" in rag.SYSTEM
     assert "sipas tabelave t" in rag.SYSTEM
+
+
+def test_system_prompt_bans_source_id_in_answer_prose() -> None:
+    # Task B: the source-id guard once concatenated to "Mos identifikues
+    # burimesh" (no verb — a dropped word). The assembled SYSTEM must now
+    # contain the imperative "Mos përdor identifikues burimesh".
+    assert "Mos përdor identifikues burimesh" in rag.SYSTEM
+    assert "Mos identifikues burimesh" not in rag.SYSTEM

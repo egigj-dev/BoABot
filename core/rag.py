@@ -53,7 +53,7 @@ SYSTEM = (
     "në tabelat e depozitave është kualifikuesi i rreshtit: kur pyetja kërkon "
     "atë rresht, jep normën e interesit të regjistruar dhe jo një shumë monetare. "
     "Mos thuaj se informacioni mungon kur rreshti i saktë gjendet në materiale. "
-    "Mos "
+    "Mos përdor "
     "identifikues burimesh si rate_0088 në tekstin e përgjigjes; citimet "
     "mbarten veçmas në fushën sources të ngjarjes done. Ruaji shifrat pikërisht "
     "në formën e burimit, si 0.50 ose 2.00; mos i rrumbullakos, konverto ose "
