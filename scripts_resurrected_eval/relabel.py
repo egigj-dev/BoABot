@@ -30,16 +30,18 @@ def slug(url: str) -> str:
     b = re.sub(r"\.[a-z0-9]+$", "", b, flags=re.I)
     return re.sub(r"[^A-Za-z0-9]+", "_", b).strip("_").lower()
 
-conn = psycopg.connect("postgresql://boa:boa@127.0.0.1:5433/boa")
+conn = psycopg.connect(os.environ["BOABOT_DSN"])
 cur = conn.cursor()
-cur.execute("SELECT id, doc, article FROM chunks")
-CHUNKS = [(i, str(d or ""), str(a or "")) for i, d, a in cur.fetchall()]
+cur.execute("SELECT id, doc, article, text FROM chunks")
+CHUNKS = [(i, str(d or ""), str(a or ""), str(t or "")) for i, d, a, t in cur.fetchall()]
 conn.close()
 DOC_OF = {}
 CHUNKS_OF: dict[str, list[tuple[str, str]]] = {}  # doc -> [(id, article)]
-for i, d, a in CHUNKS:
+TEXT_OF: dict[str, str] = {}
+for i, d, a, t in CHUNKS:
     DOC_OF[i] = d
     CHUNKS_OF.setdefault(d, []).append((i, a))
+    TEXT_OF[i] = t
 # normalized doc->canonical doc map
 NORM_DOC: dict[str, str] = {}
 for d in CHUNKS_OF:
@@ -49,6 +51,29 @@ for d in CHUNKS_OF:
 rows = [json.loads(l) for l in open(SRC, encoding="utf-8")]
 out = []
 report = []
+# Stop-terms for term-overlap sanity (deterministic, non-optional). QA-1:
+# a gold whose chunk shares NO distinctive question term is almost certainly
+# mislabelled — silently accepting it converts a real ranking miss into a
+# fake pass and INFLATES the score while making the eval less true. The
+# reg_00087 -> reg_00084 case was exactly this: 'depozit' matched everywhere
+# in the doc, so a naive scorer picked a non-answering Neni 2 over the true
+# Neni 5. This check is a FILTER + report: it does not relabel by itself, it
+# FLAGS candidates for a human (BY-style manual verification) instead of
+# auto-accepting them as KEEP-LIVE / RELABEL.
+_STOP = {"si", "e", "te", "ne", "per", "qe", "se", "me", "a", "i", "o",
+         "the", "of", "is", "and", "shqiperi", "bankes", "bankave", "duhet"}
+
+def _distinct_qterms(question: str) -> set[str]:
+    qf = fold(question)
+    return {t for t in re.findall(r"[a-zà-ÿ0-9]+", qf)
+            if len(t) > 3 and t not in _STOP}
+
+def _term_overlap(question: str, chunk_text: str) -> tuple[int, int]:
+    """(matched, total) distinctive question terms found in chunk text."""
+    terms = _distinct_qterms(question)
+    cf = fold(chunk_text)
+    return (sum(1 for t in terms if t in cf), len(terms))
+
 for r in rows:
     gid = r["gold_id"]
     q = r["question"]
@@ -61,8 +86,20 @@ for r in rows:
     # index, but if the id still exists it is by definition the intended chunk
     # (an id that survives the re-chunk is the same regulation article).
     if gid in DOC_OF:
-        out.append(r)
-        report.append({"gold_id": gid, "kind": "KEEP-LIVE"})
+        kept = dict(r)
+        chunk_text = TEXT_OF.get(gid, "")
+        matched, total = _term_overlap(q, chunk_text)
+        kind = "KEEP-LIVE"
+        if total and matched == 0:
+            # QA-1 non-optional check: keep for provenance but FLAG it — the
+            # chunk answers nothing the question asks (reg_02550 = a consumer
+            # form; reg_00538 = an Objekti intro). A flagged gold must not be
+            # silently treated as a real hit later.
+            kind = "KEEP-LIVE-FLAGGED"
+            kept["_qa_note"] = (f"zero distinctive question terms in gold chunk "
+                                f"({matched}/{total}); candidate for manual re-label")
+        out.append(kept)
+        report.append({"gold_id": gid, "kind": kind, "terms": (matched, total)})
         continue
     s = slug(r["gold_url"])
     # find the canonical doc for this gold url
