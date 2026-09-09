@@ -82,9 +82,14 @@ for r in rows:
         out.append(r)
         report.append({"gold_id": gid, "kind": "rate-keep"})
         continue
-    # KEEP the original gold if it is live — it was written against the old
-    # index, but if the id still exists it is by definition the intended chunk
-    # (an id that survives the re-chunk is the same regulation article).
+    # KEEP the original gold if it is live. NOTE: a live gold id is NOT the
+    # same article "by definition" — reg_00538 and reg_02550 were both live
+    # and both pointed at NON-ANSWERING chunks (a Neni-1 "Objekti" intro and
+    # a consumer form respectively). Live only means the chunk still exists;
+    # it says nothing about whether the chunk answers the question. The
+    # zero-term QA gate below catches the extreme case; higher-overlap
+    # mislabels (reg_00538, 4/8 terms) need manual inspection — see its
+    # _qa_note.
     if gid in DOC_OF:
         kept = dict(r)
         chunk_text = TEXT_OF.get(gid, "")
