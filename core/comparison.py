@@ -1928,16 +1928,23 @@ def structured_availability_hits(intent: RateIntent) -> list[dict]:
     """One deterministic hit per requested bank for a yes/no availability ask."""
     offers = published_product_terms(intent)
     family = intent.family or ""
+    # Display label for the evidence text + citation fields. The raw family
+    # slug (housing_credit, deposit, ...) must never reach the user: the LLM
+    # faithfully copies whatever the evidence says, so "housing_credit" in the
+    # hit leaked into answers and citations (P0 — AR). _FAMILY_LABELS is the
+    # existing family->display map used by render_availability_answer; reuse
+    # it, falling back to the slug only if a family has no label.
+    family_label = _FAMILY_LABELS.get(family, family)
     hits: list[dict] = []
     for index, bank in enumerate(intent.banks):
         offers_family = bool(offers.get(bank, False))
         hit_id = f"avail_{intent.family}_{index:03d}"
-        text = f"{bank}\n{family}: {'TERMA_TE_PUBLIKUARA' if offers_family else 'PA_TERMA_TE_PUBLIKUARA'}"
+        text = f"{bank}\n{family_label}: {'TERMA_TE_PUBLIKUARA' if offers_family else 'PA_TERMA_TE_PUBLIKUARA'}"
         hits.append({
             "id": hit_id,
             "text": text,
-            "doc": family,
-            "article": family,
+            "doc": family_label,
+            "article": family_label,
             "url": "",
             "issuer": issuer_of(hit_id, text),
             "retrieval_source": "structured_rate",
