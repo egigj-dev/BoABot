@@ -443,6 +443,24 @@ def test_resolved_branch_without_product_falls_back_to_answer(monkeypatch) -> No
     assert plan.mode is ResponseMode.ANSWER
 
 
+def test_step12_family_supplied_rate_ask_keeps_housing_credit_scope(monkeypatch) -> None:
+    # Step 17 AV pin: "per kredi?" names a family, so the answer must stay on
+    # the housing-credit rate table (the only credit product with rate rows) —
+    # never silently switch to deposit. This is the family-supplied case the
+    # missing_product shortcut legitimately serves (vs. the family=None AP ask
+    # that must now CLARIFY).
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    parsed = comparison.parse_rate_intent("cilat jane normat e interesit per kredi?")
+    assert parsed.status == "resolved"
+    assert parsed.intent is not None and parsed.intent.family == "credit"
+    hits = comparison.structured_rate_hits(parsed.intent)
+    assert hits
+    assert all(hit.get("doc") == "Normat nominale dhe NEI për individë" for hit in hits)
+    rendered = comparison.render_rate_answer(parsed.intent, hits)
+    assert "KREDI PER SHTEPI/PRONA" in rendered
+    assert "depozit" not in rendered.lower()
+
+
 def test_api_structured_path_bypasses_all_llm_rewrite_and_fidelity(monkeypatch) -> None:
     # Deterministic floor contract: with the structured seam ON but the
     # semantic stack OFF (no router/answerability key), the typed path must

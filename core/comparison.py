@@ -1762,6 +1762,43 @@ def _category_enumeration(
     return enumerated
 
 
+_METRIC_PRODUCTS_CACHE: dict[str, tuple[str, ...]] = {}
+
+
+def _metric_products(metric: str | None) -> tuple[str, ...] | None:
+    """Display labels of the DISTINCT products that carry the given metric.
+
+    Used for the family=None missing_product clarify (Step 17 AV): the user
+    supplied no family, so we cannot narrow by it, but we CAN say which
+    products actually have rows for the requested metric (e.g. interest_rate
+    -> depozita + kredi për shtëpi). Returns None if nothing qualifying is
+    found or the list exceeds the speakable cap. Family-agnostic; reuses
+    _PRODUCT_SCOPE_LABELS (no second label map) and the shared 4-cap.
+    """
+    if metric is None:
+        return None
+    cached = _METRIC_PRODUCTS_CACHE.get(metric)
+    if cached is not None:
+        return cached or None
+    labels: list[str] = []
+    seen: set[str] = set()
+    for row in _rate_rows():
+        slots = _row_slots(row)
+        if slots.metric != metric or slots.product is None:
+            continue
+        label = _PRODUCT_SCOPE_LABELS.get(slots.product, slots.product)
+        if label in seen:
+            continue
+        seen.add(label)
+        labels.append(label)
+    if not labels or len(labels) > _CATEGORY_ENUMERATION_CAP:
+        _METRIC_PRODUCTS_CACHE[metric] = ()
+        return None
+    result = tuple(labels)
+    _METRIC_PRODUCTS_CACHE[metric] = result
+    return result
+
+
 # Albanian labels for the dimensions that identify a rate row. Used by the
 # missing_key clarify to ask for what is missing by name — mirroring the
 # comparison-dimensions vocabulary, so caller and assistant share terms.
@@ -1850,7 +1887,18 @@ def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan |
     if parsed.reason == "missing_product":
         rows = _rows_for_missing_product(intent)
         products = {row["_row_slots"].product for row in rows}
-        if len(products) == 1:
+        # Step 17 AV: the single-product shortcut must only fire when the USER
+        # narrowed the ask (a family: "per kredi?" constrains to credit -> one
+        # credit product has rate rows). With family=None the user expressed
+        # NO constraint — one survivor then just means a lossy filter dropped
+        # the rest (Step 16: the AP query's 6 housing rows were silently
+        # discarded, leaving only deposit, and the shortcut invented a product
+        # the user never picked). Count the survivors only WITHIN the family
+        # the user actually named.
+        if intent.family is not None:
+            family_products = PRODUCT_FAMILY.get(intent.family, frozenset())
+            products &= family_products
+        if intent.family is not None and len(products) == 1:
             product = next(iter(products))
             scoped = intent._replace(product=product)
             scoped_rows = resolve_rate_rows(scoped)
@@ -1874,7 +1922,18 @@ def plan_structured_response(question: str, parsed: RateParse) -> ResponsePlan |
                 f"publikuara ka {listed}. Cilën prej tyre?"
             )
         else:
-            message = "Për normat e interesit më duhet produkti, sepse të dhënat ndryshojnë sipas produktit."
+            # Step 17 AV: with NO family the user expressed no constraint, so
+            # the shortcut must not fire; the clarify should still name the
+            # products that ACTUALLY carry the requested metric (speakable,
+            # ≤4), rather than the generic "më duhet produkti" dead-end.
+            metric_products = _metric_products(intent.metric)
+            if metric_products:
+                message = (
+                    f"Në tabelat e publikuara ka norma interesi për "
+                    f"{' dhe '.join(metric_products)}. Për cilin produkt po pyesni?"
+                )
+            else:
+                message = "Për normat e interesit më duhet produkti, sepse të dhënat ndryshojnë sipas produktit."
         return ResponsePlan(ResponseMode.CLARIFY, intent, known_slots, missing_slots=("product",),
                             message=message)
     if parsed.reason == "unrepresented_semantics":
