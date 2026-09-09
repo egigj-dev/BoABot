@@ -16,7 +16,7 @@ import rebuild_chunks as base
 
 
 STUB_FLOOR = 12
-DSN = os.environ.get("BOABOT_DSN", "postgresql://boa:boa@127.0.0.1:5433/boa")
+DSN = os.environ.get("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")
 
 
 def normalized_with_positions(text: str) -> tuple[str, list[int]]:

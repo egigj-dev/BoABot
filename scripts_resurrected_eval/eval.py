@@ -19,7 +19,7 @@ from pathlib import Path
 from core.retrieve import retrieve
 from core.trust import trusted_hits
 
-DSN = "postgresql://boa:boa@127.0.0.1:5433/boa"  # only used for doc-lookup
+DSN = os.environ.get("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")  # only used for doc-lookup
 ALL_SETS = [
     ("eval_retrieval.jsonl", "old (buggy)"),
     ("eval_generated.jsonl", "generated"),

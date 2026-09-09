@@ -7,7 +7,7 @@ import os
 import psycopg
 
 
-DSN = os.environ.get("BOABOT_DSN", "postgresql://boa:boa@127.0.0.1:5433/boa")
+DSN = os.environ.get("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")
 VALID_SCOPES = frozenset({"public", "internal", "supervisory"})
 
 PUBLIC_DOCS = frozenset({

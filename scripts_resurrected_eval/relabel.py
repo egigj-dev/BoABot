@@ -15,7 +15,7 @@ from collections import Counter
 from urllib.parse import urlparse, unquote
 
 sys.path.insert(0, "/home/egigj/BoABot")
-os.environ.setdefault("BOABOT_DSN", "postgresql://boa:boa@127.0.0.1:5433/boa")
+os.environ.setdefault("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")
 os.environ.setdefault("BOABOT_COMPARISON_STRUCTURED", "0")
 
 import psycopg

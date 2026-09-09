@@ -117,7 +117,7 @@ GROUPS = {
 
 def main() -> None:
     apply = "--apply" in sys.argv
-    dsn = os.environ.get("BOABOT_DSN", "postgresql://boa:***@127.0.0.1:5433/boa")
+    dsn = os.environ.get("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")
 
     mapped = set().union(*GROUPS.values())
     if sum(map(len, GROUPS.values())) != len(mapped):

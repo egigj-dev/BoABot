@@ -27,7 +27,7 @@ import rebuild_chunks as base  # noqa: E402
 import rebuild_chunks_dedup as dedup  # noqa: E402
 
 
-DSN = os.environ.get("BOABOT_DSN", "postgresql://boa:boa@127.0.0.1:5433/boa")
+DSN = os.environ.get("BOABOT_DSN", "postgresql://127.0.0.1:5433/boa")
 HARD_CAP = base.MAX_CHARS
 DEFAULT_MERGE_CAP = 3_000
 DEFAULT_SUBCLAUSE_TRIGGER = 6
