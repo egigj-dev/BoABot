@@ -29,7 +29,7 @@ import urllib.request
 
 BASE = "http://127.0.0.1:8000/turn"
 
-# (name, [turns], expected_family, expected_source_marker)
+# (name, [turns], expected_family, expected_source_marker, expected_segment)
 # expected_family: keyword that must appear in a genuine answer's prose.
 # expected_source_marker: the source TABLE the expected family's data lives in
 # (deposit rates -> "Normat e interesit të depozitave"; credit/housing rates
@@ -37,64 +37,89 @@ BASE = "http://127.0.0.1:8000/turn"
 # answers must cite these; refusals citing anything else (e.g. deposit tables
 # for a credit ask) are REFUSED-BAD-SOURCES; confident answers of the wrong
 # family with numbers are WRONG-ANSWER.
+# expected_segment: "individual" | "business" | None. The customer_segment of
+# the rows the user asked about (from the user's words/context, NOT the row
+# data). Sources whose doc names the OTHER segment for a numeric answer is a
+# segment-flip WRONG-ANSWER (Step 18 BN; the harness previously scored
+# business-indiv-2 CORRECT because it pinned family+table but not segment).
+_SEGMENT_MARKERS = {
+    "business": ("komisionet për biznese", "biznese"),
+    "individual": ("komisionet për individë", "normat e interesit të depozitave", "për individë"),
+}
+
 SEQUENCES = [
     ("ap-shape",
      ["cilat prej bankave ofrojne kredi hipotekare?",
       "cilat jane normat e interesit qe ofrojne?"],
-     "kredi hipotekare", "Normat nominale dhe NEI"),
+     "kredi hipotekare", "Normat nominale dhe NEI", None),
     ("credit-deposit-1",
      ["cilat jane normat e interesit per kredi hipotekare?",
       "po normat e interesit?"],
-     "kredi hipotekare", "Normat nominale dhe NEI"),
+     "kredi hipotekare", "Normat nominale dhe NEI", None),
     ("credit-deposit-2",
      ["cilat jane normat e interesit per depozita 12 muaj?",
       "po normat e interesit per kredita?"],
-     "kredi", "Normat nominale dhe NEI"),
+     "kredi", "Normat nominale dhe NEI", "individual"),
     ("deposit-card-1",
      ["cilat jane normat e depozitave te individve?",
       "po tarifat e kartes te kredite?"],
-     "kart", "Komisionet"),
+     "kart", "Komisionet", "individual"),
     ("deposit-card-2",
      ["cilat jane tarifat e kartes te debitit?",
       "po normat e interesit?"],
-     "kredi", "Normat nominale dhe NEI"),
+     "kredi", "Normat nominale dhe NEI", None),
     ("deposit-card-3",
      ["cilat jane normat e interesit per depozita?",
       "po komisione per karta debiti?"],
-     "kart", "Komisionet"),
+     "kart", "Komisionet", "individual"),
     ("business-indiv-1",
      ["cilat jane tarifat e biznesit te vogel?",
       "po komisionet e individve?"],
-     "individ", "Komisionet për individë"),
+     "individ", "Komisionet për individë", "individual"),
     ("business-indiv-2",
      ["cilat jane normat e interesit per biznese?",
       "po normat e interesit per individ?"],
-     "individ", "Normat e interesit të depozitave"),
+     "individ", "Normat e interesit të depozitave", "individual"),
     ("fee-rate-1",
      ["cilat jane komisionet e kartave te debitit?",
       "po normat e interesit?"],
-     "kredi", "Normat nominale dhe NEI"),
+     "kredi", "Normat nominale dhe NEI", None),
     ("fee-rate-2",
      ["cilat jane komisionet per kredi konsumatore?",
       "po normat e interesit?"],
-     "kredi", "Normat nominale dhe NEI"),
+     "kredi", "Normat nominale dhe NEI", None),
     ("loan-types",
      ["me thuaj llojet e kredive",
       "cilat jane normat e interesit qe ofrojne?"],
-     "kredi", "Normat nominale dhe NEI"),
+     "kredi", "Normat nominale dhe NEI", None),
     ("avail-then-rate",
      ["cilat prej bankave ofrojne karte krediti?",
       "cilat jane normat e interesit qe ofrojne?"],
-     "kredi", "Normat nominale dhe NEI"),
+     "kredi", "Normat nominale dhe NEI", None),
     ("avail-dep-then-rate",
      ["cilat prej bankave ofrojne depozita me afat?",
       "cilat jane normat e interesit qe ofrojne?"],
-     "depozit", "Normat e interesit të depozitave"),
+     "depozit", "Normat e interesit të depozitave", "individual"),
     ("3turn",
      ["me thuaj bankat ne shqiperi",
       "cilat prej bankave ofrojne kredi hipotekare?",
       "cilat jane normat e interesit qe ofrojne?"],
-     "kredi hipotekare", "Normat nominale dhe NEI"),
+     "kredi hipotekare", "Normat nominale dhe NEI", None),
+]
+
+# Task BO: text-side instances of the same class — an intent resolves cleanly
+# to rows that do not match what was asked (segment / metric / currency).
+# Separate list so BO's count is visible without disturbing the AQ set.
+BO_SEQUENCES = [
+    ("bo-card-debit-individual",
+     ["sa eshte komisioni i kartes te debitit?"],
+     "komision", "Komisionet", "individual"),  # all 12 debit rows are business
+    ("bo-card-credit-individual",
+     ["sa eshte komisioni i kartes se kreditit?"],
+     "komision", "Komisionet", "individual"),  # all 16 credit rows are business
+    ("bo-eur-deposit",
+     ["cilat jane normat e interesit per depozita ne euro?"],
+     "depozit", "Normat e interesit të depozitave", "individual"),
 ]
 
 # Albanian refusal markers in generated prose.
@@ -130,7 +155,7 @@ def ask(question: str, sid: str) -> dict:
 
 
 def classify(name: str, turns: list[str], expected_family: str,
-             expected_source_marker: str) -> dict:
+             expected_source_marker: str, expected_segment: str | None = None) -> dict:
     sid = f"harness-{name}-{tag}"
     final = None
     detail = {}
@@ -176,6 +201,21 @@ def classify(name: str, turns: list[str], expected_family: str,
     # never REFUSED-BAD-SOURCES (nothing bad is cited).
     if cls == "REFUSED-BAD-SOURCES" and n == 0:
         cls = "REFUSED-CLEAN"
+    # ---- Task BN: segment check — a numeric answer citing sources whose doc
+    # names the WRONG customer_segment is a segment-flip WRONG-ANSWER even
+    # when the family/table check above passed (BA-3 scored business-indiv-2
+    # CORRECT because family+table matched; the user asked business and got
+    # individual rows). Only applies when the segment is pinned AND the turn
+    # actually answered with numbers.
+    if expected_segment and cls == "CORRECT" and has_numbers:
+        table_lower = tables.lower()
+        markers = _SEGMENT_MARKERS.get(expected_segment, ())
+        other_markers = _SEGMENT_MARKERS.get(
+            "business" if expected_segment == "individual" else "individual", ())
+        has_expected = any(m in table_lower for m in markers)
+        has_other = any(m in table_lower for m in other_markers)
+        if has_other and not has_expected:
+            cls = "WRONG-ANSWER"
     return {
         "name": name, "class": cls, "n_turns": len(turns),
         "outcome": final.get("outcome"), "reason": final.get("reason"),
@@ -189,12 +229,17 @@ def classify(name: str, turns: list[str], expected_family: str,
 if __name__ == "__main__":
     global tag
     tag = sys.argv[1] if len(sys.argv) > 1 else "base"
-    results = [classify(*s) for s in SEQUENCES]
+    results = [classify(*s) for s in SEQUENCES + BO_SEQUENCES]
     counts = {}
     for r in results:
         counts[r["class"]] = counts.get(r["class"], 0) + 1
     print(f"=== AQ harness run tag={tag} ===")
-    for r in results:
+    print("--- AQ sequences (14) ---")
+    for r in results[: len(SEQUENCES)]:
+        print(f"{r['class']:<18} {r['name']:<22} outcome={r['outcome']} reason={r['reason']} "
+              f"src={r['n_sources']}")
+    print("--- BO sequences (3) ---")
+    for r in results[len(SEQUENCES) :]:
         print(f"{r['class']:<18} {r['name']:<22} outcome={r['outcome']} reason={r['reason']} "
               f"src={r['n_sources']}")
     print()
