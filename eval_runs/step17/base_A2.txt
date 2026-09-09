@@ -1,0 +1,18 @@
+=== AQ harness run tag=base-A2 ===
+REFUSED-BAD-SOURCES ap-shape               outcome=answer reason=structured_answer_and_follow_up src=21
+REFUSED-BAD-SOURCES credit-deposit-1       outcome=answer reason=structured_answer_and_follow_up src=21
+REFUSED-CLEAN      credit-deposit-2       outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      deposit-card-1         outcome=clarify reason=structured_planner_clarify src=0
+WRONG-ANSWER       deposit-card-2         outcome=answer reason=structured_answer_and_follow_up src=21
+CORRECT            deposit-card-3         outcome=answer reason=catalog_exact_hit src=12
+REFUSED-CLEAN      business-indiv-1       outcome=clarify reason=structured_planner_clarify src=0
+CORRECT            business-indiv-2       outcome=answer reason=structured_answer_and_follow_up src=21
+WRONG-ANSWER       fee-rate-1             outcome=answer reason=structured_answer_and_follow_up src=21
+REFUSED-BAD-SOURCES fee-rate-2             outcome=answer reason=structured_answer_and_follow_up src=21
+WRONG-ANSWER       loan-types             outcome=answer reason=structured_answer_and_follow_up src=21
+REFUSED-BAD-SOURCES avail-then-rate        outcome=answer reason=structured_answer_and_follow_up src=21
+CORRECT            avail-dep-then-rate    outcome=answer reason=structured_answer_and_follow_up src=21
+WRONG-ANSWER       3turn                  outcome=answer reason=structured_answer_and_follow_up src=21
+
+COUNTS: {"REFUSED-BAD-SOURCES": 4, "REFUSED-CLEAN": 3, "WRONG-ANSWER": 4, "CORRECT": 3}
+TOTAL: 14
