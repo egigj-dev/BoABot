@@ -1655,7 +1655,18 @@ def result_complexity(rows: list[dict]) -> ResultComplexity:
 
 
 def _rows_for_missing_product(intent: RateIntent) -> list[dict]:
-    """Find only evidence matching the explicit non-product slots."""
+    """Find only evidence matching the explicit non-product slots.
+
+    bank_scope == "named" keeps only bank-line rows matching intent.banks.
+    bank_scope == "all" keeps BOTH bank-line rows AND bankless product rows:
+    some tables (e.g. KREDI PER SHTEPI/PRONA under Normat nominale dhe NEI)
+    label their lines by PRODUCT, not by bank, and those rows carry real
+    interest-rate evidence. Requiring bank lines for "all" silently dropped
+    them, falsely reporting that "only one product has rates" — the root of
+    the Step 16 wrong-answer (AP: 21 deposit rows survived, the 6 housing
+    rows died). resolve_rate_rows already admits bankless product rows via
+    its family_listing branch; align with it here.
+    """
     if intent.metric is None:
         return []
     resolved: list[dict] = []
@@ -1670,8 +1681,6 @@ def _rows_for_missing_product(intent: RateIntent) -> list[dict]:
             continue
         bank_lines = _selected_bank_lines(row, intent.banks)
         if intent.bank_scope == "named" and not bank_lines:
-            continue
-        if intent.bank_scope == "all" and not bank_lines:
             continue
         copy = dict(row)
         copy["_bank_lines"] = tuple(bank_lines)

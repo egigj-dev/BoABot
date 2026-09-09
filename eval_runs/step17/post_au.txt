@@ -1,0 +1,18 @@
+=== AQ harness run tag=post-AU ===
+REFUSED-CLEAN      ap-shape               outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      credit-deposit-1       outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      credit-deposit-2       outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      deposit-card-1         outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      deposit-card-2         outcome=clarify reason=structured_planner_clarify src=0
+CORRECT            deposit-card-3         outcome=answer reason=catalog_exact_hit src=12
+REFUSED-CLEAN      business-indiv-1       outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      business-indiv-2       outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      fee-rate-1             outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      fee-rate-2             outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      loan-types             outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      avail-then-rate        outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      avail-dep-then-rate    outcome=clarify reason=structured_planner_clarify src=0
+REFUSED-CLEAN      3turn                  outcome=clarify reason=structured_planner_clarify src=0
+
+COUNTS: {"REFUSED-CLEAN": 13, "CORRECT": 1}
+TOTAL: 14
