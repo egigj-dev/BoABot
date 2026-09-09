@@ -60,6 +60,7 @@ _RATE_BANK_NAMES = frozenset(
 )
 # Chunk metadata resolves each gold ID to its answerable document-and-article unit.
 _CHUNK_META: dict[str, tuple[str, str]] = {}
+_RESTRICTED_IDS: set[str] = set()
 try:
     import psycopg
     with psycopg.connect(DSN) as conn:
@@ -67,6 +68,11 @@ try:
             cur.execute("SELECT id, doc, article FROM chunks")
             for chunk_id, doc, article in cur:
                 _CHUNK_META[chunk_id] = (doc, str(article or ""))
+            # Task CC: policy-excluded golds. visibility != 'public' chunks are
+            # deliberately excluded from retrieval by PUBLIC_VISIBILITY; a gold
+            # pointing at one is SKIPPED, not a miss.
+            cur.execute("SELECT id FROM chunks WHERE visibility <> 'public'")
+            _RESTRICTED_IDS = {str(r[0]) for r in cur.fetchall()}
 except Exception as exc:
     print(f"  [chunk metadata unresolved from PostgreSQL: {exc}]", file=sys.stderr)
 
@@ -95,6 +101,8 @@ def _score(entries: list[dict]) -> dict:
     reg_total = 0  # Number of regulation questions used as the denominator for regulation metrics.
     miss_list: list[tuple[str, str, list[str]]] = []  # (gold_id, question, top_ids)
     lats: list[float] = []
+    skipped: list[tuple[str, str]] = []  # (gold_id, question) policy-excluded
+    skipped_prefixes: dict[str, int] = {}
 
     rate_no_bank = 0
     hit_by_prefix: dict[str, int] = {}
@@ -109,6 +117,20 @@ def _score(entries: list[dict]) -> dict:
         question = e["question"]
         is_trap = e.get("trap", False)
         pref = _prefix(gid)
+
+        # Task CC: policy-excluded golds (visibility != public) are SKIPPED,
+        # never scored as misses. The PUBLIC_VISIBILITY retrieval contract
+        # deliberately excludes restricted chunks, so a restricted gold can
+        # never be retrieved and scoring it as a miss understates recall by a
+        # known amount. Skipped items are excluded from the denominator and
+        # reported separately.
+        if gid in _RESTRICTED_IDS:
+            skipped.append((gid, question))
+            skipped_prefixes[pref] = skipped_prefixes.get(pref, 0) + 1
+            continue
+
+        if pref == "reg":
+            reg_total += 1
 
         if is_trap:
             trap_total += 1
@@ -126,8 +148,6 @@ def _score(entries: list[dict]) -> dict:
         doc_rank = next((i + 1 for i, hit in enumerate(hits)
                          if hit.get("doc") == gold_doc), None)
 
-        if pref == "reg":
-            reg_total += 1
         for k in KS:
             if rank and rank <= k:
                 hit_at[k] += 1
@@ -164,11 +184,18 @@ def _score(entries: list[dict]) -> dict:
                 rate_no_bank += 1
 
     latency_median = statistics.median(lats) * 1000 if lats else 0
-    latency_p95 = sorted(lats)[int(0.95 * n)] * 1000 if lats and n > 0 else 0
+    latency_p95 = (sorted(lats)[int(0.95 * len(lats))] * 1000
+                   if lats and len(lats) > 1 else 0)
+
+    n_eligible = n - len(skipped)  # Task CC: policy-excluded golds are not scored
 
     return {
         "n": n,
-        "hit_at": {k: (hit_at[k], f"{hit_at[k]/n:.3f}") for k in KS},
+        "n_eligible": n_eligible,
+        "skipped": skipped,
+        "skipped_count": len(skipped),
+        "skipped_prefixes": skipped_prefixes,
+        "hit_at": {k: (hit_at[k], f"{hit_at[k]/n_eligible:.3f}" if n_eligible else "-") for k in KS},
         "reg_article_hit_at": {k: (reg_article_hit_at[k], f"{reg_article_hit_at[k]/reg_total:.3f}" if reg_total else "-") for k in KS},
         "reg_doc_hit_at": {k: (reg_doc_hit_at[k], f"{reg_doc_hit_at[k]/reg_total:.3f}" if reg_total else "-") for k in KS},
         "reg_exact_hit_at": {k: (reg_exact_hit_at[k], f"{reg_exact_hit_at[k]/reg_total:.3f}" if reg_total else "-") for k in KS},
@@ -255,6 +282,16 @@ def _fmt(scores: list[tuple[str, str, dict]]) -> None:
             ))
             for question, reason in refusals:
                 print(f"    refused ({reason}): {question}")
+
+    print("\n--- Policy-excluded (SKIPPED) golds — excluded from all recall denominators ---")
+    for label, path, s in scores:
+        if not s["skipped_count"]:
+            print(f"  {label}: none")
+            continue
+        print(f"  {label}: {s['skipped_count']} skipped (prefixes {s['skipped_prefixes']}, "
+              f"eligible n={s['n_eligible']}/{s['n']})")
+        for gid, question in s["skipped"]:
+            print(f"    {gid:12s} {question[:70]}")
 
 
 def main() -> None:
