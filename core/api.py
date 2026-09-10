@@ -355,7 +355,11 @@ async function send() {
   let text = '';
   let failed = false;
 
-  try {
+  // Step 18-BT: a single retry on transient network failure before surfacing
+  // the error. One retry, short backoff, network-only (a non-OK HTTP response
+  // is not retried). The user-visible failure is an Albanian message, never a
+  // raw English engine error ("Failed to fetch").
+  async function fetchTurnOnce() {
     const resp = await fetch('/turn', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -364,7 +368,17 @@ async function send() {
     if (!resp.ok || !resp.body) {
       throw new Error('Kërkesa nuk mund të përpunohej (HTTP ' + resp.status + ').');
     }
+    return resp;
+  }
+  let resp;
+  try {
+    resp = await fetchTurnOnce();
+  } catch (firstErr) {
+    await new Promise(r => setTimeout(r, 400));  // short backoff
+    resp = await fetchTurnOnce();  // second and final attempt
+  }
 
+  try {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -415,7 +429,9 @@ async function send() {
     // The server owns session history; the client keeps only sessionId.
   } catch (e) {
     statusDiv.textContent = '';
-    contentDiv.innerHTML = '<span style="color:#f66">Gabim: ' + escapeHTML(e.message) + '</span>';
+    // Albanian user-facing message; the raw engine error (e.g. "Failed to
+    // fetch") is not shown to the user.
+    contentDiv.innerHTML = '<span style="color:#f66">Gabim: lidhja me serverin u ndërpre. Ju lutemi provoni përsëri.</span>';
   }
   sendBtn.disabled = false;
   input.focus();
