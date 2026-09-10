@@ -218,12 +218,47 @@ def frame_effect(reason: DecisionReason) -> ContextEffect:
     return ContextEffect.CLEAR
 
 
+def _frame_resolves(intent: RateIntent | None) -> bool:
+    """True when the intent can actually resolve evidence rows.
+
+    Step 18-BX (b): a carried frame must be one the next turn can bind onto
+    without dying. An unresolvable clarify intent (missing_key product with no
+    rows) would, if adopted, turn every subsequent slot reply into a terminal
+    refusal. Fail-open on any resolution error (keep the frame) rather than
+    dropping context over a transient failure.
+    """
+    if intent is None:
+        return False
+    from .comparison import structured_rate_hits
+    try:
+        return bool(structured_rate_hits(intent, k=1))
+    except Exception:
+        return True
+
+
 def next_structured_frame(
         decision: Decision, previous: RateIntent | None) -> RateIntent | None:
     """Apply the centralized outcome-driven lifecycle to a structured frame."""
     effect = frame_effect(decision.reason)
     if effect is ContextEffect.REPLACE:
-        return decision.rate_intent
+        candidate = decision.rate_intent
+        if candidate is None:
+            return None
+        # Step 18-BX (b): adopt the REPLACE frame only when it can resolve
+        # rows, so an unresolvable clarify intent never becomes a carried
+        # frame that later slot replies bind onto (the AE dead end). TRANSFER
+        # frames resolve through the transfer-fee engine (not the rate tables)
+        # and are exempt by reason — their lifecycle is unchanged. A reject
+        # keeps the PREVIOUS frame on a concrete answer (real context) and
+        # drops it on a clarify (the clarify supersedes).
+        if (decision.reason in {
+                DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
+                DecisionReason.TRANSFER_CONTEXT_ESTABLISHED,
+        } or _frame_resolves(candidate)):
+            return candidate
+        if decision.reason is DecisionReason.CATALOG_EXACT_HIT:
+            return previous
+        return None
     if effect is ContextEffect.PRESERVE:
         return previous
     return None

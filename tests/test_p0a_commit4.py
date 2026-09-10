@@ -20,18 +20,19 @@ def _done(response):
     return next(payload for payload in payloads if payload["type"] == "done")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "UNCLEAR: should STRUCTURED_PLANNER_CLARIFY REPLACE the carried "
-    "structured frame (current behaviour, callcenter.py:205) or CLEAR it "
-    "(asserted here)? REPLACE-on-clarify persists an unresolved intent that a "
-    "later rephrase merges onto — the open frame_effect defect, measure-before-"
-    "fix. Product call pending — see FAILURE_TRIAGE_2026-09-08.md."
-))
-def test_frame_effect_and_next_structured_frame_mapping() -> None:
+# Step 18-BX: the frame lifecycle table and the bind-time resolvability guard.
+# STRUCTURED_PLANNER_CLARIFY STAYS in REPLACE (option (a) CLEAR was rejected —
+# it drops the whole frame so a genuine answer to the clarify loses context and
+# is re-parsed cold). What changed is next_structured_frame: a REPLACE frame is
+# adopted only when it can actually resolve rows (the note's (b)); an
+# unresolvable clarify intent (missing_key with no rows) is NOT carried, so a
+# later slot reply cannot bind onto it and terminally refuse.
+def test_frame_effect_mapping_table_is_stable() -> None:
     replace = {
         DecisionReason.CATALOG_EXACT_HIT,
         DecisionReason.TRANSFER_FEE_DIMENSIONS_MISSING,
         DecisionReason.TRANSFER_CONTEXT_ESTABLISHED,
+        DecisionReason.STRUCTURED_PLANNER_CLARIFY,
     }
     preserve = {
         DecisionReason.REPEAT,
@@ -51,19 +52,51 @@ def test_frame_effect_and_next_structured_frame_mapping() -> None:
     assert all(callcenter.frame_effect(reason) is ContextEffect.CLEAR
                for reason in clear)
 
+
+def test_next_structured_frame_resolvability_guard() -> None:
+    # The genuine-answer path MUST survive (Step 18-BX constraint): an intent
+    # that resolves rows (deposit family) is adopted as the frame, and a
+    # concrete answer still replaces context.
     previous = RateIntent(
-        bank_scope="all", banks=(), product="deposit", metric="interest_rate",
+        bank_scope="all", banks=(), product=None, metric="interest_rate",
         fee_event=None, value_type=None, term_months=None, amount_band=None,
-        breadth="product_metric",
+        breadth="product_metric", family="deposit",
     )
-    replacement = previous._replace(product="consumer_credit_unsecured")
-    replace_decision = Decision(
+    # deposit family listing resolves rows -> adopted.
+    deposit_decision = Decision(
+        None, reason=DecisionReason.CATALOG_EXACT_HIT, rate_intent=previous,
+    )
+    assert callcenter.next_structured_frame(deposit_decision, None) is previous
+
+    # An unresolvable intent (consumer-credit rates have NO rows) must be
+    # rejected at bind time: it would otherwise be carried and make every
+    # later slot reply a terminal refusal (the AE dead end).
+    unresolvable = RateIntent(
+        bank_scope="all", banks=(), product="consumer_credit_unsecured",
+        metric="interest_rate", fee_event=None, value_type=None,
+        term_months=None, amount_band=None, breadth="product_metric",
+        family="credit",
+    )
+    clarify_decision = Decision(
+        None, reason=DecisionReason.STRUCTURED_PLANNER_CLARIFY,
+        rate_intent=unresolvable,
+    )
+    # STRUCTURED_PLANNER_CLARIFY stays REPLACE in the table, but the guard
+    # drops the unresolvable frame.
+    assert callcenter.frame_effect(DecisionReason.STRUCTURED_PLANNER_CLARIFY) \
+        is ContextEffect.REPLACE
+    assert callcenter.next_structured_frame(clarify_decision, previous) is None
+
+    # A concrete CATALOG_EXACT_HIT that somehow does not resolve keeps the
+    # previous context rather than destroying it.
+    odd_decision = Decision(
         None, reason=DecisionReason.CATALOG_EXACT_HIT,
-        rate_intent=replacement,
+        rate_intent=unresolvable,
     )
+    assert callcenter.next_structured_frame(odd_decision, previous) is previous
+
     preserve_decision = Decision(None, reason=DecisionReason.REPEAT)
     clear_decision = Decision(None, reason=DecisionReason.DENSE_RETRIEVAL)
-    assert callcenter.next_structured_frame(replace_decision, previous) is replacement
     assert callcenter.next_structured_frame(preserve_decision, previous) is previous
     assert callcenter.next_structured_frame(clear_decision, previous) is None
 
