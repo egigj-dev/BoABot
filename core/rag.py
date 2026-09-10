@@ -162,7 +162,19 @@ def needs_rewrite(question, history):
 
 def grounded_messages(question, history, hits, support_level="SUPPORTED"):
     """Build one completion request with already-vetted evidence in context."""
-    evidence = json.dumps(hits, ensure_ascii=False, default=str)
+    # Step 18-BU: the structured seam's rate_resolution / rate_row_slots carry
+    # RAW product/family enum slugs (e.g. 'housing_credit', 'deposit'), and the
+    # generator copies whatever the evidence says. Serialize a DISPLAY-LABELLED
+    # copy for the LLM (reusing _PRODUCT_SCOPE_LABELS / _FAMILY_LABELS — no fifth
+    # map) while leaving the original hits untouched, because structured_verdict
+    # matches rate_resolution/rate_row_slots by raw-value equality. This is the
+    # fourth instance of "the deterministic layer knows the label, the
+    # user-facing layer is not told"; see the commit message on a shared seam.
+    from .comparison import _FAMILY_LABELS, _PRODUCT_SCOPE_LABELS
+    evidence = json.dumps(
+        [_label_hits_for_llm(h, _FAMILY_LABELS, _PRODUCT_SCOPE_LABELS) for h in hits],
+        ensure_ascii=False, default=str,
+    )
     # Keep the invariant instruction in its own leading message.  DeepSeek prompt
     # caching is prefix-based, so dynamic retrieval evidence must follow it.
     messages = [{"role": "system", "content": SYSTEM},
@@ -176,6 +188,28 @@ def grounded_messages(question, history, hits, support_level="SUPPORTED"):
             ),
         })
     return messages + (history or []) + [{"role": "user", "content": question}]
+
+
+def _label_hits_for_llm(hit: dict, family_labels: dict, product_labels: dict) -> dict:
+    """Return a display-labelled COPY of a structured hit for the LLM context.
+
+    Replaces raw product/family enum slugs with Albanian labels in the
+    seam-internal fields only. The original hit object is never mutated, so the
+    raw equality checks in structured_verdict are unaffected.
+    """
+    copy = dict(hit)
+    rr = hit.get("rate_resolution")
+    if isinstance(rr, dict):
+        copy["rate_resolution"] = {
+            k: (product_labels.get(v, v) if k == "product"
+                else family_labels.get(v, v) if k == "family" else v)
+            for k, v in rr.items()
+        }
+    rrs = hit.get("rate_row_slots")
+    if isinstance(rrs, dict) and rrs.get("product") is not None:
+        copy["rate_row_slots"] = dict(rrs)
+        copy["rate_row_slots"]["product"] = product_labels.get(rrs["product"], rrs["product"])
+    return copy
 
 
 def retrieve_evidence(query, history=None, query_embedding=None, embedded_query=None,
