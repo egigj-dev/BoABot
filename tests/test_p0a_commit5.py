@@ -219,23 +219,8 @@ def test_non_slot_reply_does_not_merge_into_carried_missing_key_frame(router_off
     assert decision.rate_intent is None
 
 
-def test_api_non_slot_reply_after_missing_key_clarify_is_terminal_refusal(
-        router_off, monkeypatch) -> None:
-    """Task AI regression: 'nuk e di' after a missing_key clarify.
-
-    Pre-AD (0a3e8b8): this reply surfaced as semantic_clarify — no rewrite,
-    no rate refusal. Post-AD the T1 clarify text names the missing dimension
-    ("monedha ... Për cilën monedhë po pyesni?"), and the keyed LLM rewrite
-    expands the non-answer into a rate-shaped standalone ("...pavarësisht
-    monedhës?"). The post-rewrite reparse (api.py _structured_rate_decision)
-    then forces that query into the 0-row structured seam -> retrieve_evidence
-    refuses -> catalog_missing_key terminal. The frame merge itself is clean;
-    the coupling is message-text -> rewrite -> reparse.
-
-    Pins the CURRENT observed contract (unsupported/catalog_missing_key, and
-    never 'answer') so any fix (Task AJ #4/AF) or further change to this
-    reply shape is a visible diff rather than a silent suite-green change.
-    """
+def _api_missing_key_clarify_replay(monkeypatch):
+    """Shared setup for the 'nuk e di' after a missing_key clarify replay."""
     store = callcenter.SessionStore()
     monkeypatch.setattr(api, "sessions", store)
     monkeypatch.setattr(api, "needs_rewrite", lambda *_a, **_k: True)
@@ -267,12 +252,40 @@ def test_api_non_slot_reply_after_missing_key_clarify_is_terminal_refusal(
         "question": "nuk e di",
         "session_id": r1["session_id"],
     }))
-    assert r2["outcome"] == "unsupported"
-    assert r2["reason"] == "catalog_missing_key"
+    return r1, r2
+
+
+def test_api_non_slot_reply_never_answers_after_missing_key_clarify(
+        router_off, monkeypatch) -> None:
+    """'nuk e di' after a missing_key clarify must NEVER yield a cited answer.
+
+    The deterministic safety invariant (never 'answer') — independent of the
+    exact refusal reason code, which is the #3 defect (see the xfail below).
+    """
+    _r1, r2 = _api_missing_key_clarify_replay(monkeypatch)
     assert r2["outcome"] != "answer"  # safety invariant: never a cited answer
-    # (trace_flags on the done event is BOABOT_DEBUG-gated; the rewrite firing
-    # is already proven — api.rewrite is pinned, and without it T2 would have
-    # gone dense, not catalog_missing_key.)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "UNCLEAR/#3: 'nuk e di' after a missing_key clarify should NOT end in a "
+    "terminal catalog_missing_key refusal. The terminal IS the #3 "
+    "frame-lifecycle defect (DESIGN_NOTE_FRAME_EFFECT_2026-09-08.md (b)+(c2)): "
+    "the api-layer rewrite expands the non-answer into a rate-shaped "
+    "standalone which the post-rewrite reparse forces into the 0-row seam. "
+    "#3's (c2) prevents the non-answer from being rewritten into a rate ask "
+    "at all, so the follow-up should RE-ASK or CLARIFY, never terminally "
+    "refuse. Currently the defect is live, so the assertion below FAILS and "
+    "the xfail marks the expected failure; when #3 lands it stops failing and "
+    "xpasses, making the fix visible. The safety invariant (never answer) is "
+    "pinned separately above."
+))
+def test_api_non_slot_reply_reason_is_catalog_missing_key(
+        router_off, monkeypatch) -> None:
+    _r1, r2 = _api_missing_key_clarify_replay(monkeypatch)
+    # The #3-FIXED contract: a non-answer after a missing_key clarify must not
+    # be forced into a terminal rate refusal. It should re-ask or clarify.
+    assert r2["outcome"] != "unsupported"
+    assert r2["reason"] != "catalog_missing_key"
 
 
 def _api_setup(monkeypatch):
