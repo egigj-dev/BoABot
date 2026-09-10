@@ -136,14 +136,29 @@ def rewrite(question, history):
     return rewritten[:MAX_QUERY_CHARS]
 
 
+# Step 18-BX (c2): a non-answer must NEVER be rewritten into a rate-shaped
+# standalone query. Task AI proved the keyed rewrite expands 'nuk e di' into
+# '...pavarësisht monedhës?' which the post-rewrite reparse forces into the
+# 0-row seam -> terminal refusal. These are not retrieval queries at all.
+_NON_ANSWER_RE = re.compile(
+    r"nuk\s+e\s+di\b|nuk\s+di\b|nuk\s+e\s+te\s+di\b|nuk\s+te\s+di\b|"
+    r"nuk\s+(?:e\s+)?kuptoj\b|nuk\s+e\s+dim\b",
+    re.IGNORECASE,
+)
+
+
 def needs_rewrite(question, history):
     """Flag contextual ellipsis without paying for a model call on explicit turns.
 
     Leading conjunctions/pronouns are contextual. Otherwise only very short turns
     lacking a proper name or number are rewritten; explicit domain-bearing turns
-    of five or more words are already useful retrieval queries.
+    of five or more words are already useful retrieval queries. Non-answers
+    ('nuk e di', 'nuk kuptoj') are never rewritten (Step 18-BX (c2)) — the
+    rewrite would manufacture a rate ask where none exists.
     """
     if not history:
+        return False
+    if _NON_ANSWER_RE.match(question.strip()):
         return False
     words = re.findall(r"[^\W_]+", question, flags=re.UNICODE)
     if not words:

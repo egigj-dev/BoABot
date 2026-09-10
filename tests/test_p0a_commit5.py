@@ -198,13 +198,12 @@ def test_bare_term_without_old_term_still_requires_full_certification(router_off
 
 
 def test_non_slot_reply_does_not_merge_into_carried_missing_key_frame(router_off) -> None:
-    """Task AI: a non-slot-bearing reply must not bind onto the carried
-    missing_key frame. With the router off, decide() falls through to
-    DENSE_RETRIEVAL for 'nuk e di' even with the frame present — never a rate
-    refusal. The live catalog_missing_key for this reply comes from the
-    api-layer rewrite path (see the API test below), not from the frame merge;
-    this pins the seam so a greedier merge cannot silently re-introduce a
-    refusal at this layer."""
+    """Step 18-BX (c2): a non-slot-bearing reply ('nuk e di') is caught by the
+    fragment/meta floor BEFORE any merge or retrieval — the strongest form of
+    'does not bind onto the carried missing_key frame'. It re-asks with the
+    generic meta message (FRAGMENT_META), rate_intent stays None, and it never
+    becomes the rate refusal. (Pre-c2 this was DENSE_RETRIEVAL; the fragment
+    floor now owns the non-answer, which is the c2 contract.)"""
     parsed = comparison.parse_rate_intent(
         "cila banke ka normen me te mire per kredi konsumatore?",
     )
@@ -215,19 +214,38 @@ def test_non_slot_reply_does_not_merge_into_carried_missing_key_frame(router_off
         "nuk e di", "", [], last_structured_frame=frame,
     )
 
-    assert decision.reason is callcenter.DecisionReason.DENSE_RETRIEVAL
+    assert decision.reason is callcenter.DecisionReason.FRAGMENT_META
     assert decision.rate_intent is None
 
 
+def test_non_answer_is_never_rewritten_into_rate_ask() -> None:
+    """Step 18-BX (c2): 'nuk e di' (and variants) must never be rewritten —
+    needs_rewrite returns False even with clarifying history, so the API layer
+    cannot manufacture a rate-shaped standalone from a non-answer (the AI
+    coupling: rewrite -> reparse -> terminal refusal)."""
+    assert not rag.needs_rewrite(
+        "nuk e di",
+        [{"role": "user", "content": "cila banke ka normen me te mire per kredi konsumatore?"},
+         {"role": "assistant", "content": "Për kredi konsumatore pa hipotekë më duhet monedha. Për cilën monedhë po pyesni?"}],
+    )
+    assert not rag.needs_rewrite("nuk kuptoj", [{"role": "user", "content": "sa eshte komisioni?"}])
+    assert not rag.needs_rewrite("NUK E DI", [{"role": "user", "content": "cilat jane normat?"}])
+
+
 def _api_missing_key_clarify_replay(monkeypatch):
-    """Shared setup for the 'nuk e di' after a missing_key clarify replay."""
+    """Shared setup for the 'nuk e di' after a missing_key clarify replay.
+
+    Uses the REAL rag.needs_rewrite — the c2 guard (Step 18-BX) returns False
+    for a non-answer, so the rewrite must not fire and the turn must re-ask
+    via the fragment/meta floor instead of the rate refusal."""
     store = callcenter.SessionStore()
     monkeypatch.setattr(api, "sessions", store)
-    monkeypatch.setattr(api, "needs_rewrite", lambda *_a, **_k: True)
-    monkeypatch.setattr(api, "rewrite", lambda _q, _h: (
-        "Cila bankë në Shqipëri ofron normën më të mirë të interesit "
-        "për kredi konsumatore pa hipotekë, pavarësisht monedhës?"
-    ))
+    monkeypatch.setattr(api, "needs_rewrite", rag.needs_rewrite)
+    monkeypatch.setattr(
+        api, "rewrite",
+        lambda _q, _h: "Cila bankë në Shqipëri ofron normën më të mirë të interesit "
+                       "për kredi konsumatore pa hipotekë, pavarësisht monedhës?",
+    )
 
     def _retrieve(query, *_a, rate_intent=None, **_k):
         hits = (
@@ -255,37 +273,27 @@ def _api_missing_key_clarify_replay(monkeypatch):
     return r1, r2
 
 
-def test_api_non_slot_reply_never_answers_after_missing_key_clarify(
+def test_api_non_slot_reply_is_meta_re_ask_not_cited_answer(
         router_off, monkeypatch) -> None:
-    """'nuk e di' after a missing_key clarify must NEVER yield a cited answer.
-
-    The deterministic safety invariant (never 'answer') — independent of the
-    exact refusal reason code, which is the #3 defect (see the xfail below).
-    """
+    """'nuk e di' after a missing_key clarify must re-ask (FRAGMENT_META), never
+    yield a CITED answer and never a terminal rate refusal (Step 18-BX c2)."""
     _r1, r2 = _api_missing_key_clarify_replay(monkeypatch)
-    assert r2["outcome"] != "answer"  # safety invariant: never a cited answer
+    assert r2["reason"] == callcenter.DecisionReason.FRAGMENT_META.value
+    assert r2["outcome"] != "unsupported"
+    assert len(r2.get("sources") or []) == 0  # never a cited answer
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "UNCLEAR/#3: 'nuk e di' after a missing_key clarify should NOT end in a "
-    "terminal catalog_missing_key refusal. The terminal IS the #3 "
-    "frame-lifecycle defect (DESIGN_NOTE_FRAME_EFFECT_2026-09-08.md (b)+(c2)): "
-    "the api-layer rewrite expands the non-answer into a rate-shaped "
-    "standalone which the post-rewrite reparse forces into the 0-row seam. "
-    "#3's (c2) prevents the non-answer from being rewritten into a rate ask "
-    "at all, so the follow-up should RE-ASK or CLARIFY, never terminally "
-    "refuse. Currently the defect is live, so the assertion below FAILS and "
-    "the xfail marks the expected failure; when #3 lands it stops failing and "
-    "xpasses, making the fix visible. The safety invariant (never answer) is "
-    "pinned separately above."
-))
-def test_api_non_slot_reply_reason_is_catalog_missing_key(
+def test_api_non_slot_reply_after_missing_key_clarify_re_asks(
         router_off, monkeypatch) -> None:
+    """The #3-FIXED contract (Step 18-BX, c2): a non-answer after a missing_key
+    clarify is handled by the fragment/meta floor — it re-asks, it does NOT end
+    in a terminal catalog_missing_key refusal. (This was asserted under
+    xfail(strict=True) since BV; c2 landed, it xpasses, so the marker is
+    removed and it is a normal passing contract test.)"""
     _r1, r2 = _api_missing_key_clarify_replay(monkeypatch)
-    # The #3-FIXED contract: a non-answer after a missing_key clarify must not
-    # be forced into a terminal rate refusal. It should re-ask or clarify.
     assert r2["outcome"] != "unsupported"
     assert r2["reason"] != "catalog_missing_key"
+    assert r2["reason"] == callcenter.DecisionReason.FRAGMENT_META.value
 
 
 def _api_setup(monkeypatch):

@@ -41,7 +41,8 @@ _ENABLE = ("1", "true", "yes", "on")
 # so a tiny set of observed fragments cannot degrade.
 _FRAGMENTS = frozenset(
     ("pse", "perse", "pse jo", "cbehet", "cbehet ne pergjithesi",
-     "nuk te kuptoj", "nuk kuptoj", "kjo nuk ishte pyetja ime",
+     "nuk te kuptoj", "nuk kuptoj", "nuk e kuptoj", "nuk e di",
+     "kjo nuk ishte pyetja ime",
      "pse eshte kjo", "cfare do te thote kjo", "si", "si?"),
 )
 _DOMAIN_ANCHORS = (
