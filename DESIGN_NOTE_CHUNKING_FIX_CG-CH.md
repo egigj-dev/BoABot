@@ -13,8 +13,23 @@ and CH (split articles).
   (0/68 have a clean internal heading); the doc-sequence heuristic recovered
   1/68; the real recoverability path is the source PDF.
 - 276 clean articles split across 1,166 chunks; median size 4,731 vs 926 for
-  unsplit; ~25% of splits are mid-sentence (genuinely severed), ~75% at clean
-  sub-headings. **7 of the eval's 18 reg golds sit in a split article.**
+  unsplit. **CL (exact count, mechanical definition — boundary ends neither on
+  terminal punctuation nor on a numbered/lettered heading):** 213 (77%) at
+  clean sub-headings, **63 (23%) mid-sentence**, all 63 with neither half
+  ending on a terminal (answer-bearing severances). **5 of the 18 eval reg
+  golds sit in a mid-sentence split** (reg_00203, 03181, 02550, 03916,
+  01252) — the same questions as the genuine-ranking misses, so the severance
+  contributes directly to the residual RegArt gap.
+- **CM (PDF re-parse scope):** NO source PDFs exist locally (the find across
+  repo/tmp/home returned none) and **no PDF-extraction pipeline exists in the
+  tree** (no fitz/pymupdf/pdfplumber; the original PDF → chunks step is not in
+  this repo — pdf_text.jsonl is gitignored/absent). The 13 collision-doc PDFs
+  are **all re-scrapable** (their full URLs are on bankofalbania.org, verified).
+  The current ARTICLE_HEADING regex (`^\d+(?:/\d+)?$` at a line start) is why
+  table row numbers parsed as article numbers; recovery of the TRUE Neni for
+  the 68 collision chunks therefore requires **re-downloading 13 PDFs +
+  re-extracting** — semi-automatic at best (per-document review), not a code
+  fix alone.
 
 ## Options compared
 
@@ -56,11 +71,15 @@ and CH (split articles).
 ## Recommendation
 
 **Option (b)** — parser fix at ingestion + a data repair pass — is the only one
-that fixes the emitter and preserves the answered-bearing 63 NSFR rows (as a
+that fixes the emitter and preserves the answer-bearing 63 NSFR rows (as a
 retabled unit) and relabels the 68 collisions from the PDF. (a) destroys
-content; (c) is a much larger project that CH shows is ~75% unnecessary
-(clean sub-head splits) for 25% gain (mid-sentence), and it re-breaks the gold
-set harder.
+content; (c) is a much larger project (CL: 63 mid-sentence severances + a new
+split policy, re-breaking the gold set harder).
+**Scope limitation made explicit:** (b) fixes the emitter and the labels but
+**does NOT fix the 63 mid-sentence splits** (reg_00203/03181/02550/03916/01252
+golds included). The chunk-size mechanism behind splits is untouched by (b);
+only (c)'s re-chunk addresses them. A human choosing (b) must accept the
+mid-sentence severances remain, or pair (b) with a subsequent (c).
 
 Gold-set survival for (b): re-run relabel.py after re-embed with the CURRENT
 committed code (QA-1 gate on), then manually inspect every FLAGGED + every gold
