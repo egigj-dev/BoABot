@@ -829,3 +829,51 @@ def test_missing_key_clarify_asks_for_the_missing_dimension(question) -> None:
     assert "Nuk gjeta burim mjaftueshëm" not in plan.message
     assert plan.message.count("?") == 1
     assert plan.message.count("më duhet") == 1  # one dimension at a time
+
+
+# ---- Task BW-2: pin the two clarify MESSAGE surfaces that feed the router's
+# rewrite context (Task AI proved message text -> rewrite coupling). F: the
+# family=None metric-product enumeration message; I: the metric-scoped afat
+# message. The messages themselves are the surface — if they change, the
+# rewrite they feed changes with them, so the exact strings are pinned.
+def test_bw2_f_metric_product_enumeration_message_is_stable(monkeypatch) -> None:
+    # F surface: missing_product with family=None and metric=interest_rate
+    # enumerates the products that ACTUALLY carry rate rows.
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    from core.comparison import RateIntent, ResponseMode
+    intent = RateIntent(
+        bank_scope="all", banks=(), product=None, metric="interest_rate",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", family=None,
+    )
+    plan = comparison.plan_structured_response(
+        "cilat jane normat e interesit qe ofrojne?",
+        comparison.RateParse("unsupported", intent, "missing_product", None),
+    )
+    assert plan is not None
+    assert plan.mode is ResponseMode.CLARIFY
+    assert plan.message == (
+        "Në tabelat e publikuara ka norma interesi për depozita dhe kredi për "
+        "shtëpi. Për cilin produkt po pyesni?"
+    )
+
+
+def test_bw2_i_metric_scoped_afat_message_is_stable() -> None:
+    # I surface: a deposit ask with a missing term resolves to the missing_key
+    # clarify naming the afat dimension (in the NOMINATIVE) and asking for a
+    # VALUE. The EUR qualifier is unresolvable, so term_months is the first
+    # missing dimension -> the afat message. This is the message the router's
+    # rewrite context feeds on for the follow-up turn.
+    parsed = comparison.parse_rate_intent(
+        "cilat jane normat e interesit per depozita ne euro?",
+    )
+    assert parsed.status == "unsupported"
+    assert parsed.reason == "missing_key"
+    plan = comparison.plan_structured_response(
+        "cilat jane normat e interesit per depozita ne euro?", parsed,
+    )
+    assert plan is not None
+    assert plan.mode is comparison.ResponseMode.CLARIFY
+    assert plan.message == (
+        "Për depozita më duhet afati (në muaj). Për cilin afat po pyesni?"
+    )
