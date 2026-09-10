@@ -28,6 +28,17 @@ rate_tables.jsonl, handoff_probe.json
   pre-reorg lineage archive (retained outside git); do not regenerate or
   delete the artifact, and do not rebind it to a different source corpus
   without re-tuning the margin threshold.
+
+Ingestion NOT reproducible from this repository (Step DC finding, same class
+as handoff_probe.json): the live `chunks` table (3,434 rows) cannot be
+regenerated from this checkout. No source PDFs exist in the tree, and no
+PDF-extraction pipeline is present (no fitz/pymupdf/pdfplumber; the original
+.pdf → text step left no code and its `pdf_text.jsonl` is gitignored/absent).
+`scripts/rebuild_chunks.py` operates on existing DB rows, not files. A full
+re-index therefore requires re-scraping the source PDFs from
+bankofalbania.org (URLs are in chunk metadata) and rebuilding an extraction
+pipeline first — a prerequisite shared by any chunking change, and a real gap
+for a public repository.
 ```
 
 ## Run

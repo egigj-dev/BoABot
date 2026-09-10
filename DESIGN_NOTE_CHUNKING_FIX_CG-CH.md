@@ -81,6 +81,33 @@ golds included). The chunk-size mechanism behind splits is untouched by (b);
 only (c)'s re-chunk addresses them. A human choosing (b) must accept the
 mid-sentence severances remain, or pair (b) with a subsequent (c).
 
+### DC re-cost with CM's finding — the (b)/(c) gap narrowed
+
+CM established that the PDF-extraction pipeline **does not exist in this
+repository** (no fitz/pymupdf/pdfplumber, no source PDFs, pdf_text.jsonl
+gitignored). So **(b)'s "relabel the 68 from PDF" is not a parser fix plus a
+repair pass: it is re-scrape 13 PDFs + rebuild an extraction pipeline that no
+longer exists + per-document manual review.** Option (c) requires the same
+pipeline. **The marginal cost of (c) over (b) is therefore only the split
+policy + the extra re-embed — most of (b)'s cost is the shared prerequisite.**
+
+DB settled the ranking question: re-embedding the concatenated article text
+did NOT beat the winner for any of the 3 genuine-ranking golds (reg_03181,
+reg_03916, reg_01252) — those 3 are true ranking failures, not chunking
+artifacts, and RegDoc@10 = 1.000 stands. So (c) fixing the splits does **not**
+recover those 3 (the reunited article still ranked below the winner); the
+severance contribution to RegArt is confined to reg_00203/reg_02550.
+
+**Amended recommendation:** (b) remains the lower-cost, lower-risk default for
+the emitter + labels + NSFR rows. **But the recommendation is now a narrow
+preference, not a strong one** — the gap between (b) and (c) is mostly a
+shared prerequisite, and if the human is willing to rebuild the pipeline at
+all, (c)'s extra cost buys the 63 mid-sentence split fixes (incl. reg_00203
+and reg_02550) for little more. **State plainly: if a re-scrape + pipeline
+rebuild is happening for any reason, choose (c); if the pipeline rebuild is
+not acceptable, (b) alone leaves the severances and the 68-collision relabel
+can be abandoned (filter the 5055 rows only).** Decision is the human's.
+
 Gold-set survival for (b): re-run relabel.py after re-embed with the CURRENT
 committed code (QA-1 gate on), then manually inspect every FLAGGED + every gold
 that lands in a re-chunked article, replacing any that KEEP-LIVE accepts
