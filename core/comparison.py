@@ -681,6 +681,14 @@ def certify_semantic_coverage(
 
     if intent.term_months is not None:
         consumed_term = False
+        # A hyphenated band ("241-360 muaj") is one unit: consuming its span
+        # covers both numbers, otherwise the band start ("241") dangles as an
+        # unresolved token and the ask is UNREPRESENTED even though the term
+        # resolved. The band END is the intent's term (rows key on it).
+        for match in _MATURITY_RANGE_RE.finditer(folded_question):
+            if int(match.group(2)) == intent.term_months:
+                consume_span(match.start(), match.end(), match.group(0))
+                consumed_term = True
         for match in _CERTIFIABLE_TERM_RE.finditer(folded_question):
             if int(match.group(1)) == intent.term_months:
                 consume_span(match.start(), match.end(), match.group(0))
@@ -959,9 +967,16 @@ def resolve_rate_rows(intent: RateIntent) -> list[dict]:
                 and row.get("customer_segment") != intent.customer_segment):
             continue
         bank_lines = _selected_bank_lines(row, intent.banks)
+        # Family listing admits bankless product-labeled rows when the bank
+        # scope is implicit (all): the housing/business NEI tables label their
+        # lines by product, and those ARE the rate evidence. This applies to
+        # product-set asks too ("kredi per shtepi, maturitet 241-360 muaj") —
+        # the row resolves and the renderer states the attribution boundary.
+        # A NAMED-bank ask still requires bank lines, so per-bank housing
+        # questions stay honestly unresolvable until the data task lands.
         family_listing = (
-            intent.product is None and family_products is not None
-            and intent.bank_scope == "all"
+            intent.bank_scope == "all"
+            and (intent.product is not None or family_products is not None)
         )
         if not bank_lines and not family_listing:
             continue
@@ -1409,9 +1424,17 @@ def parse_rate_intent(question: str) -> RateParse:
         )
 
     # ---- Value/comparison ask ----
+    # A product noun plus a hyphenated maturity band ("kredi per shtepi,
+    # maturitet 241-360 muaj") is a rate-bearing ask even though it names no
+    # price word, currency or segment: the band only ever qualifies a rate
+    # table. This admits BAND phrases only — a bare "N muaj" term still needs
+    # the metric/currency/segment/comparison triggers, so "depozita 12 muaj"
+    # and other elliptical bare-term continuations keep their existing paths.
+    band_phrase = bool(product_matches) and _MATURITY_RANGE_RE.search(folded_question)
     rate_like = bool(metric_matches) or (
         bool(product_matches) and any(term in folded_question for term in _COMPARISON_TERMS)
-    ) or bool(product_matches and (currency is not None or customer_segment is not None))
+    ) or bool(product_matches and (currency is not None or customer_segment is not None)) \
+        or band_phrase
     if not rate_like:
         return RateParse("not_rate", None, "")
 
@@ -1499,6 +1522,30 @@ def parse_rate_intent(question: str) -> RateParse:
             customer_segment=customer_segment,
         )
         return _certified_rate_parse(question, intent)
+    # Maturity term: a hyphenated band reads its END ("241-360 muaj" -> 360,
+    # which is the row's term_months); otherwise the certifiable single-term
+    # forms ("12 muaj", "maturitet 12 muaj"). Band-start numbers are never the
+    # term — a bare "241" would not match the (241, 360) row.
+    term_months = None
+    range_match = _MATURITY_RANGE_RE.search(folded_question)
+    if range_match:
+        term_months = int(range_match.group(2))
+    else:
+        term_match = _CERTIFIABLE_TERM_RE.search(folded_question)
+        if term_match:
+            term_months = int(term_match.group(1))
+    # Product + maturity band, no metric word ("kredi per shtepi, maturitet
+    # 241-360 muaj"): the band only qualifies rate tables, so the metric is a
+    # wildcard and the term pins the row. Resolution then matches the band's
+    # row on term_months (the band END) across the product's rate rows.
+    if not metric_matches and term_months is not None:
+        return _certified_rate_parse(question, RateIntent(
+            bank_scope=bank_scope, banks=banks, product=product_matches[0],
+            metric=None, fee_event=None, value_type=None,
+            term_months=term_months, amount_band=None, breadth="leaf",
+            currency=currency, customer_segment=customer_segment,
+            wildcard_slots=frozenset({"metric"}),
+        ))
     if len(metric_matches) != 1:
         return RateParse("unsupported", None, "conflicting_slots")
 
@@ -1509,10 +1556,6 @@ def parse_rate_intent(question: str) -> RateParse:
     if len(events) > 1 or len(value_types) > 1:
         return RateParse("unsupported", None, "conflicting_slots")
 
-    term_months = None
-    term_match = _CERTIFIABLE_TERM_RE.search(folded_question)
-    if term_match:
-        term_months = int(term_match.group(1))
     amount_band = None
     if re.search(r"\bshum\w*\s+minimal\w*\b", folded_question):
         amount_band = "minimum"

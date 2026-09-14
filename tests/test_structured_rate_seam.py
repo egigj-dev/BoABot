@@ -350,10 +350,13 @@ def test_category_enumeration_none_family_falls_back() -> None:
     assert comparison._category_enumeration(intent, ()) is None
 
 
-def test_missing_product_clarify_enumerates_credit_categories(monkeypatch) -> None:
-    # The "name the product" interest-rate clarify must enumerate only the
-    # credit category with interest-rate rows (voice-safe, ≤4, deduped,
-    # metric-scoped): KREDI PER SHTEPI/PRONA alone.
+def test_missing_product_credit_shortcut_resolves_housing(monkeypatch) -> None:
+    # Family-narrowed missing_product (credit) has exactly ONE product with
+    # interest-rate rows (housing). The single-product shortcut must RESOLVE
+    # it directly — that is the documented success state (Step 17 AV) — now
+    # that the bankless-row admission lets product-set resolution succeed.
+    # The metric-scoped category enumeration is pinned at the unit level
+    # (test_category_enumeration_interest_rate_credit_yields_only_covered).
     monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
     from core.comparison import RateIntent, ResponseMode
     intent = RateIntent(
@@ -366,13 +369,12 @@ def test_missing_product_clarify_enumerates_credit_categories(monkeypatch) -> No
         comparison.RateParse("unsupported", intent, "missing_product", None),
     )
     assert plan is not None
-    assert plan.mode is ResponseMode.CLARIFY
-    assert "Në tabelat e publikuara ka" in plan.message
-    assert "kredi për shtëpi/prona" in plan.message
-    assert "Cilën prej tyre?" in plan.message
-    # metric-scoped: the fee-only credit categories are NOT offered, because
-    # the interest-rate clarify must never suggest a category with no rate rows.
-    assert "kredi konsumatore të pasiguruara" not in plan.message
+    assert plan.mode is ResponseMode.ANSWER_AND_FOLLOW_UP
+    assert plan.supported_scope == ("housing_credit",)
+    assert plan.missing_slots == ("product",)
+    # the generic-name-the-product clarify is superseded by the direct
+    # resolution on this path
+    assert "Në tabelat e publikuara ka" not in plan.message
     assert "kredi konsumatore me hipotekë" not in plan.message
 
 
@@ -841,6 +843,45 @@ def test_missing_key_clarify_asks_for_the_missing_dimension(question) -> None:
     assert "Nuk gjeta burim mjaftueshëm" not in plan.message
     assert plan.message.count("?") == 1
     assert plan.message.lower().count("më duhet") == 1  # one dimension at a time (the generic ask keeps the same single-ask shape)
+
+
+# ---- Task 2: hyphenated maturity bands enter the rate seam ----
+def test_hyphenated_maturity_band_parses_and_resolves() -> None:
+    # "maturitet 241-360 muaj" is rate-bearing with a product noun and no
+    # price word: it enters the seam (band phrase), reads the band END as the
+    # term (360 — the row's term_months), and resolves the housing row.
+    parsed = comparison.parse_rate_intent("kredi per shtepi, maturitet 241-360 muaj")
+    assert parsed.status == "resolved"
+    assert parsed.reason == ""
+    assert parsed.intent is not None
+    assert parsed.intent.product == "housing_credit"
+    assert parsed.intent.term_months == 360
+    assert "metric" in parsed.intent.wildcard_slots
+    rows = comparison.resolve_rate_rows(parsed.intent)
+    assert len(rows) == 1
+    assert rows[0]["item"] == "maturitet 241-360 muaj"
+    assert rows[0]["_bank_lines"] == ()  # no bank attribution — the data task
+
+
+def test_band_start_number_is_covered_not_dangling() -> None:
+    # Even with the metric named, the band start used to dangle as an
+    # unresolved token ('241' -> UNREPRESENTED). The band is one unit.
+    parsed = comparison.parse_rate_intent(
+        "normat e interesit per kredi per shtepi me maturitet 241-360 muaj")
+    assert parsed.status == "resolved"
+    assert parsed.coverage is not None
+    assert parsed.coverage.status is comparison.StructuredIntentStatus.FULL_STRUCTURED_INTENT
+
+
+def test_bare_single_term_stays_outside_the_rate_seam() -> None:
+    # The entry-gate widening admits BAND phrases only: a bare "N muaj" term
+    # with a product noun is still not_rate, keeping elliptical bare-term
+    # continuations and single-term asks on their existing rewrite/dense paths.
+    for question in (
+        "kredi per shtepi 241 muaj",
+        "depozita 12 muaj",
+    ):
+        assert comparison.parse_rate_intent(question).status == "not_rate"
 
 
 # ---- Task BW-2: pin the two clarify MESSAGE surfaces that feed the router's
