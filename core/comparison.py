@@ -1855,19 +1855,11 @@ def _missing_key_message(intent: RateIntent) -> str:
     if missing_dims:
         dim = missing_dims[0]
         label = _MISSING_KEY_DIMENSION_LABELS[dim]
+        # Plain one-dimension ask. `ask` must never depend on bands being
+        # present: the band override (Task 1) replaces it only when maturity
+        # bands actually resolve for the asked product/family.
         if dim == "term_months":
-            bands = sorted(
-                {
-                    slots.maturity_band
-                    for row in _rate_rows()
-                    if (slots := _row_slots(row)).product == intent.product
-                    and slots.maturity_band is not None
-                },
-                key=lambda band: band[0],
-            )
-            if bands:
-                band_text = ", ".join(f"{a}-{b} muaj" for a, b in bands)
-                ask = f"Tabela raporton për {band_text}. Për cilin po pyesni?"
+            ask = "Për cilin afat po pyesni?"
         elif dim == "currency":
             ask = "Për cilën monedhë po pyesni?"
         elif dim == "amount_band":
@@ -2038,7 +2030,11 @@ def structured_availability_hits(intent: RateIntent) -> list[dict]:
             "text": text,
             "doc": family_label,
             "article": family_label,
-            "url": next((str(r.get("url") or "") for r in matching_rows if r.get("url")), ""),
+            # URL deliberately empty: resolving the family's source URL means
+            # walking the actual corpus rows behind the family (a separate
+            # change). The frontend must skip the anchor when url is empty so
+            # a blank href never resolves to the page origin again.
+            "url": "",
             "issuer": issuer_of(hit_id, text),
             "retrieval_source": "structured_rate",
             "rate_resolution": intent._asdict(),
