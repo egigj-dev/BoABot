@@ -805,7 +805,9 @@ def test_card_availability_is_scoped_to_extracted_product(monkeypatch, question,
 # The branch must ask for the missing dimension BY NAME and never fall back to
 # the refusal message. Task AH: "më duhet" takes the NOMINATIVE (monedha,
 # afati, shuma, segmenti) and asks for a VALUE ("Për cilin afat po pyesni?"),
-# not a choice among dimension names.
+# not a choice among dimension names. Task 0b/1: dimensions the corpus does
+# not vary on are suppressed, and when none varies the generic dimension ask
+# stands (a named ask would dead-end the reply).
 @pytest.mark.parametrize("question", [
     "cila banke ka normen me te mire per kredi konsumatore?",
     "cilat jane normat e interesit per kredi konsumatore?",
@@ -821,14 +823,24 @@ def test_missing_key_clarify_asks_for_the_missing_dimension(question) -> None:
         comparison.NO_EVIDENCE_MESSAGE, "",  # never the refusal-as-clarify
     )
     assert plan.message.rstrip().endswith("?")
-    # names the missing dimension in the NOMINATIVE (më duhet X)
-    assert "më duhet monedha" in plan.message or "më duhet afati" in plan.message \
-        or "më duhet shuma" in plan.message or "më duhet segmenti" in plan.message
+    # One dimension at a time (Task AH): when a dimension varies for the asked
+    # product it is named in the NOMINATIVE ("më duhet afati" / shuma / …).
+    # When NONE varies — a consumer-credit ask whose product has zero
+    # interest-rate rows, so no dimension value can resolve it — the generic
+    # dimension ask stands: it still names the paths (bankë, produkt, afat,
+    # monedhë) and never names a dimension that would dead-end the reply.
+    named_dimension = any(
+        f"më duhet {name}" in plan.message
+        for name in ("monedha", "afati", "shuma", "segmenti")
+    )
+    generic_ask = plan.message.startswith(
+        "Më duhet një dimension të saktë që tabelat e publikuara ta njoh")
+    assert named_dimension or generic_ask
     # asks for a VALUE, not a choice among dimension names
     assert "cil" in plan.message.lower() and "prej tyre" not in plan.message
     assert "Nuk gjeta burim mjaftueshëm" not in plan.message
     assert plan.message.count("?") == 1
-    assert plan.message.count("më duhet") == 1  # one dimension at a time
+    assert plan.message.lower().count("më duhet") == 1  # one dimension at a time (the generic ask keeps the same single-ask shape)
 
 
 # ---- Task BW-2: pin the two clarify MESSAGE surfaces that feed the router's

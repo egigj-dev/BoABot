@@ -134,7 +134,11 @@ def test_hybrid_does_not_let_extractor_override_clarify(monkeypatch) -> None:
 
 
 def test_superlative_loan_ask_clarify_message_lists_dimensions(monkeypatch) -> None:
-    # Full seam: the CLARIFY message must name the missing dimensions.
+    # Full seam: the CLARIFY message must ask for ONE missing dimension at a
+    # time (Task AH). loan_type/customer_segment are suppressed — the corpus
+    # does not vary on them within this ask's scope — so the afat dimension
+    # with its real band schedule is the single named ask. (Task 1: the bands
+    # are family-scoped — housing, not the business schedule.)
     from core import callcenter
     monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
     decision = callcenter._structured_rate_decision(
@@ -142,8 +146,9 @@ def test_superlative_loan_ask_clarify_message_lists_dimensions(monkeypatch) -> N
     assert decision is not None
     assert decision.outcome is callcenter.Outcome.CLARIFY
     assert decision.reason is callcenter.DecisionReason.COMPARISON_DIMENSIONS_MISSING
-    assert "lloji i kredisë" in decision.message
-    assert "afati" in decision.message
+    assert "më duhet afati" in decision.message
+    assert "Tabela raporton për" in decision.message
+    assert "241-360" in decision.message  # housing band set, not the business schedule
 
 
 # ---- Fix 4: metric-only comparison resolves the bare family ----------------

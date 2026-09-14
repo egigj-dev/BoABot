@@ -124,27 +124,33 @@ def test_nonranking_deposit_listing_is_full_not_clarified(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
-    ("question", "missing", "message_terms"),
+    ("question", "missing", "message_terms", "absent_terms"),
     (
         (
             "cila bankë ka normën më të mirë për depozita 12 muaj në LEK?",
             ("amount_band", "customer_segment"),
-            ("shuma", "segmenti"),
+            ("shuma",),
+            ("segmenti",),  # all deposit rows are individual — suppressed
         ),
         (
             "cila bankë ka normën më të mirë për depozitë 12 muaj në lekë për individë?",
             ("amount_band",),
             ("shuma",),
+            (),
         ),
         (
             "cila bankë ka depozitën më të mirë?",
             ("currency", "term_months", "amount_band", "customer_segment"),
-            ("monedha", "afati", "shuma", "segmenti"),
+            ("afati",),
+            # one dimension at a time (Task AH); currency and customer_segment
+            # are suppressed (the corpus does not vary on them), amount_band
+            # yields to the first unresolved dimension in order.
+            ("monedha", "shuma", "segmenti"),
         ),
     ),
 )
 def test_superlative_missing_dimensions_clarifies(
-        monkeypatch, question, missing, message_terms) -> None:
+        monkeypatch, question, missing, message_terms, absent_terms) -> None:
     parsed = comparison.parse_rate_intent(question)
 
     assert parsed.status == "unsupported"
@@ -162,6 +168,7 @@ def test_superlative_missing_dimensions_clarifies(
     assert decision.reason is callcenter.DecisionReason.COMPARISON_DIMENSIONS_MISSING
     assert decision.message.startswith("Për ta krahasuar saktë, më duhet ")
     assert all(term in decision.message for term in message_terms)
+    assert all(term not in decision.message for term in absent_terms)
 
 
 def test_fully_comparable_deposit_superlative_stays_structured(monkeypatch) -> None:
