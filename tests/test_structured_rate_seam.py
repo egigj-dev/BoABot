@@ -884,6 +884,55 @@ def test_bare_single_term_stays_outside_the_rate_seam() -> None:
         assert comparison.parse_rate_intent(question).status == "not_rate"
 
 
+# ---- Task 3: business-segment disclosure on the answer decision (mitigation) ----
+def test_card_fee_answer_carries_business_segment_disclosure(monkeypatch) -> None:
+    # A card-fee ask served by business-only rows must open with the segment
+    # disclosure. This is a MITIGATION: it makes the mismatch VISIBLE, it does
+    # not make the answer correct for an individual (BQ's call, out of scope).
+    from core import callcenter
+    from core.comparison import RateIntent
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    frame = RateIntent(
+        bank_scope="all", banks=(), product="credit_card", metric="fee",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric",
+    )
+    decision = callcenter._structured_rate_decision("credins", frame=frame)
+    assert decision is not None
+    assert decision.outcome is None
+    assert decision.reason is callcenter.DecisionReason.CATALOG_EXACT_HIT
+    assert decision.message == (
+        "Tabelat e publikuara kanë komisione karte vetëm për biznese.")
+
+
+def test_business_segment_disclosure_silent_when_business_was_asked(monkeypatch) -> None:
+    # The same resolution under an explicit business ask: rows match the
+    # request, so no disclosure.
+    from core import callcenter
+    from core.comparison import RateIntent
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    frame = RateIntent(
+        bank_scope="all", banks=(), product="credit_card", metric="fee",
+        fee_event=None, value_type=None, term_months=None, amount_band=None,
+        breadth="product_metric", customer_segment="business",
+    )
+    decision = callcenter._structured_rate_decision("credins", frame=frame)
+    assert decision is not None
+    assert decision.reason is callcenter.DecisionReason.CATALOG_EXACT_HIT
+    assert decision.message == ""
+
+
+def test_business_segment_disclosure_silent_for_deposit_asks(monkeypatch) -> None:
+    # Plan-path answer with individual rows (deposits): nothing to disclose.
+    from core import callcenter
+    monkeypatch.setenv("BOABOT_COMPARISON_STRUCTURED", "1")
+    decision = callcenter._structured_rate_decision(
+        "normat e interesit per depozita")
+    assert decision is not None
+    assert decision.reason is callcenter.DecisionReason.CATALOG_EXACT_HIT
+    assert decision.message == ""
+
+
 # ---- Task BW-2: pin the two clarify MESSAGE surfaces that feed the router's
 # rewrite context (Task AI proved message text -> rewrite coupling). F: the
 # family=None metric-product enumeration message; I: the metric-scoped afat

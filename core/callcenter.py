@@ -1291,6 +1291,36 @@ def _deictic_bank_scope_preflight(
     )
 
 
+_SEGMENT_DISCLOSURE_BY_PRODUCT_METRIC = {
+    ("credit_card", "fee"): "Tabelat e publikuara kanë komisione karte vetëm për biznese.",
+    ("debit_card", "fee"): "Tabelat e publikuara kanë komisione karte vetëm për biznese.",
+}
+
+
+def _segment_disclosure_note(intent, rows) -> str:
+    """One-sentence MITIGATION when business rows serve a non-business ask.
+
+    Task 3: every card-fee row lives under customer_segment=business, so an
+    unspecified/individual card-fee ask silently answers with business numbers.
+    This makes the mismatch VISIBLE; it does not make the answer correct for an
+    individual — the evidence-vs-question class is BQ's decision, out of scope
+    here. Returns "" for business asks, availability turns, and any resolution
+    that is not uniformly business-segment (a partial mix cannot claim
+    "vetëm për biznese").
+    """
+    if intent is None or getattr(intent, "availability", False):
+        return ""
+    if getattr(intent, "customer_segment", None) == "business":
+        return ""
+    if not rows or not all(
+            str(row.get("customer_segment")) == "business" for row in rows):
+        return ""
+    return _SEGMENT_DISCLOSURE_BY_PRODUCT_METRIC.get(
+        (intent.product, intent.metric),
+        "Tabelat e publikuara kanë këto vlera vetëm për biznese.",
+    )
+
+
 def _structured_rate_decision(
         question: str, *, frame: RateIntent | None = None) -> Decision | None:
     """Injectable pre-LLM seam for exact closed-catalog rate requests."""
@@ -1301,6 +1331,11 @@ def _structured_rate_decision(
                              _source_bank_labels, merge_elliptical,
                              parse_rate_intent_hybrid, plan_structured_response,
                              resolve_rate_rows)
+
+    def _answer_note(intent_like) -> str:
+        if intent_like is None:
+            return ""
+        return _segment_disclosure_note(intent_like, resolve_rate_rows(intent_like))
 
     parsed = parse_rate_intent_hybrid(question)
     plan = plan_structured_response(question, parsed)
@@ -1316,6 +1351,7 @@ def _structured_rate_decision(
             None, question=question,
             reason=DecisionReason.CATALOG_EXACT_HIT,
             rate_intent=plan.intent, response_plan=plan,
+            message=_answer_note(plan.intent),
             trace_flags=frozenset({DecisionEvent.structured_lookup}),
         )
 
@@ -1341,6 +1377,7 @@ def _structured_rate_decision(
                     None, question=question,
                     reason=DecisionReason.CATALOG_EXACT_HIT,
                     rate_intent=merged,
+                    message=_answer_note(merged),
                     trace_flags=frozenset({
                         DecisionEvent.context_inherited,
                         DecisionEvent.structured_lookup,
@@ -1377,6 +1414,7 @@ def _structured_rate_decision(
                             None, question=question,
                             reason=DecisionReason.CATALOG_EXACT_HIT,
                             rate_intent=merged,
+                            message=_answer_note(merged),
                             trace_flags=frozenset({
                                 DecisionEvent.context_inherited,
                                 DecisionEvent.structured_lookup,
@@ -1479,6 +1517,7 @@ def _structured_rate_decision(
     return Decision(
         None, question=question, reason=DecisionReason.CATALOG_EXACT_HIT,
         rate_intent=parsed.intent,
+        message=_answer_note(parsed.intent),
         trace_flags=frozenset({DecisionEvent.structured_lookup}),
     )
 

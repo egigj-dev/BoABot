@@ -104,6 +104,28 @@ FRAME_RESOLVE_EXEMPT_REASONS = frozenset({
 
 
 # ------------------------------------------------------------ tiny mirrors ---
+# Mirror of callcenter._segment_disclosure_note (Task 3 mitigation): one
+# sentence when uniformly-business rows serve a non-business ask. Keep in sync.
+_SEGMENT_DISCLOSURE_BY_PRODUCT_METRIC = {
+    ("credit_card", "fee"): "Tabelat e publikuara kanë komisione karte vetëm për biznese.",
+    ("debit_card", "fee"): "Tabelat e publikuara kanë komisione karte vetëm për biznese.",
+}
+
+
+def _segment_disclosure_note(intent, rows) -> str:
+    if intent is None or getattr(intent, "availability", False):
+        return ""
+    if getattr(intent, "customer_segment", None) == "business":
+        return ""
+    if not rows or not all(
+            str(row.get("customer_segment")) == "business" for row in rows):
+        return ""
+    return _SEGMENT_DISCLOSURE_BY_PRODUCT_METRIC.get(
+        (intent.product, intent.metric),
+        "Tabelat e publikuara kanë këto vlera vetëm për biznese.",
+    )
+
+
 def _enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _ENABLE
 
@@ -243,8 +265,11 @@ def _mirror_structured_seal(question: str, frame, enabled: bool) -> tuple[Mirror
                 "clarify", plan.message, "structured_planner_clarify",
                 plan.intent, plan,
                 frozenset({"structured_lookup"})), parse_info, parsed
+        plan_rows = (comparison.resolve_rate_rows(plan.intent)
+                     if plan.intent is not None else [])
         return MirroredDecision(
-            None, "", "catalog_exact_hit", plan.intent, plan,
+            None, _segment_disclosure_note(plan.intent, plan_rows),
+            "catalog_exact_hit", plan.intent, plan,
             frozenset({"structured_lookup"})), parse_info, parsed
 
     if parsed.status == "not_rate":
@@ -262,12 +287,14 @@ def _mirror_structured_seal(question: str, frame, enabled: bool) -> tuple[Mirror
                     bus_scope_cleared = (cleared, cleared_rows)
             if merged is not None and merged_rows:
                 return MirroredDecision(
-                    None, "", "catalog_exact_hit", merged, None,
+                    None, _segment_disclosure_note(merged, merged_rows),
+                    "catalog_exact_hit", merged, None,
                     frozenset({"context_inherited", "structured_lookup"})), parse_info, parsed
             if bus_scope_cleared is not None:
                 cleared, cleared_rows = bus_scope_cleared
                 return MirroredDecision(
-                    None, "", "catalog_exact_hit", cleared, None,
+                    None, _segment_disclosure_note(cleared, cleared_rows),
+                    "catalog_exact_hit", cleared, None,
                     frozenset({"context_inherited", "structured_lookup"})), parse_info, parsed
             if merged is not None and merged.bank_scope == "named":
                 pure = (merged.family == frame.family
@@ -277,7 +304,8 @@ def _mirror_structured_seal(question: str, frame, enabled: bool) -> tuple[Mirror
                     bank_rows = comparison._rows_for_missing_product(merged)
                     if bank_rows:
                         return MirroredDecision(
-                            None, "", "catalog_exact_hit", merged, None,
+                            None, _segment_disclosure_note(merged, bank_rows),
+                            "catalog_exact_hit", merged, None,
                             frozenset({"context_inherited", "structured_lookup"})), parse_info, parsed
         return None, parse_info, parsed
 

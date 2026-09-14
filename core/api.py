@@ -767,6 +767,15 @@ def generate_turn(req: TurnReq, *, include_vetted_text: bool = False):
                 answer = NO_EVIDENCE_MESSAGE
                 yield from emit_policy_message(answer)
             else:
+                # Task 3 mitigation: the seam carries a segment-disclosure note
+                # on the decision message (e.g. card fees exist only for
+                # business); it opens the answer on BOTH the render and the
+                # LLM-over-rows paths and is recorded with the answer text.
+                disclosure = getattr(decision, "message", "") or ""
+                if disclosure:
+                    if answer_parts:
+                        answer_parts.insert(0, disclosure)
+                    answer = f"{disclosure} {answer}".strip()
                 if answer_parts:
                     for index, sentence in enumerate(answer_parts):
                         piece = sentence if index == 0 else f" {sentence}"
