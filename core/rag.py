@@ -177,17 +177,13 @@ def needs_rewrite(question, history):
 
 def grounded_messages(question, history, hits, support_level="SUPPORTED"):
     """Build one completion request with already-vetted evidence in context."""
-    # Step 18-BU: the structured seam's rate_resolution / rate_row_slots carry
-    # RAW product/family enum slugs (e.g. 'housing_credit', 'deposit'), and the
-    # generator copies whatever the evidence says. Serialize a DISPLAY-LABELLED
-    # copy for the LLM (reusing _PRODUCT_SCOPE_LABELS / _FAMILY_LABELS — no fifth
-    # map) while leaving the original hits untouched, because structured_verdict
-    # matches rate_resolution/rate_row_slots by raw-value equality. This is the
-    # fourth instance of "the deterministic layer knows the label, the
-    # user-facing layer is not told"; see the commit message on a shared seam.
-    from .comparison import _FAMILY_LABELS, _PRODUCT_SCOPE_LABELS
+    # Step 18-BU / Task 4: the structured seam's reason metadata
+    # (rate_resolution / rate_row_slots) is stripped from the LLM copy
+    # entirely — the raw enum slugs are exactly what a copy-cat model would
+    # echo into the answer (P0-AR class). The ORIGINAL hits keep the fields
+    # because structured_verdict compares them by raw-value equality.
     evidence = json.dumps(
-        [_label_hits_for_llm(h, _FAMILY_LABELS, _PRODUCT_SCOPE_LABELS) for h in hits],
+        [_label_hits_for_llm(h, {}, {}) for h in hits],
         ensure_ascii=False, default=str,
     )
     # Keep the invariant instruction in its own leading message.  DeepSeek prompt
@@ -206,25 +202,30 @@ def grounded_messages(question, history, hits, support_level="SUPPORTED"):
 
 
 def _label_hits_for_llm(hit: dict, family_labels: dict, product_labels: dict) -> dict:
-    """Return a display-labelled COPY of a structured hit for the LLM context.
+    """Return a display-safe COPY of a structured hit for the LLM context.
 
-    Replaces raw product/family enum slugs with Albanian labels in the
-    seam-internal fields only. The original hit object is never mutated, so the
-    raw equality checks in structured_verdict are unaffected.
+    [SUPERSEDED] The old implementation replaced product/family slugs with
+    Albanian labels in rate_resolution / rate_row_slots:
+    #
+    #    copy = dict(hit)
+    #    rr = hit.get("rate_resolution")
+    #    if isinstance(rr, dict):
+    #        copy["rate_resolution"] = { ... labelled ... }
+    #    rrs = hit.get("rate_row_slots")
+    #    if isinstance(rrs, dict) and rrs.get("product") is not None: ...
+    #
+    # Labelling two keys was not enough: the same copy-cat mechanism (P0-AR)
+    # still exposes metric/value_type/fee_event/customer_segment/business_size/
+    # rate_component/bank_scope/breadth/currency as raw English enum slugs in
+    # the generation prompt. Those typed slots are structured_verdict
+    # bookkeeping on the ORIGINAL hit (raw-equality against intent._asdict())
+    # and carry no phrasing value — the generator phrases from text/doc/
+    # article. So the LLM copy keeps only the evidence fields, making
+    # structured evidence shape-identical to dense evidence (Task 4).
     """
-    copy = dict(hit)
-    rr = hit.get("rate_resolution")
-    if isinstance(rr, dict):
-        copy["rate_resolution"] = {
-            k: (product_labels.get(v, v) if k == "product"
-                else family_labels.get(v, v) if k == "family" else v)
-            for k, v in rr.items()
-        }
-    rrs = hit.get("rate_row_slots")
-    if isinstance(rrs, dict) and rrs.get("product") is not None:
-        copy["rate_row_slots"] = dict(rrs)
-        copy["rate_row_slots"]["product"] = product_labels.get(rrs["product"], rrs["product"])
-    return copy
+    del family_labels, product_labels  # no labelling needed anymore
+    return {key: hit.get(key) for key in (
+        "id", "text", "doc", "article", "url", "issuer")}
 
 
 def retrieve_evidence(query, history=None, query_embedding=None, embedded_query=None,
