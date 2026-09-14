@@ -1812,6 +1812,14 @@ _MISSING_KEY_DIMENSION_LABELS = {
     "loan_type": "lloji i kredisë (konsumatore, shtëpi/hipotekare, biznes)",
 }
 
+def _dimension_varies(dimension: str, intent: RateIntent) -> bool:
+    """True when the corpus holds more than one value for this dimension."""
+    values = {
+        getattr(_row_slots(row), dimension, None)
+        for row in _rate_rows()
+        if intent.product is None or _row_slots(row).product == intent.product
+    }
+    return len({v for v in values if v is not None}) > 1
 
 def _missing_key_message(intent: RateIntent) -> str:
     """One-or-two-sentence clarify for a resolved-but-unresolvable intent.
@@ -1832,17 +1840,34 @@ def _missing_key_message(intent: RateIntent) -> str:
     if intent.product is not None:
         known.append(_PRODUCT_SCOPE_LABELS.get(intent.product, intent.product))
     elif intent.family:
-        known.append(intent.family)
+        known.append(_FAMILY_LABELS.get(intent.family, intent.family))
     # First missing dimension in canonical order; if none, use a generic ask.
     # Grammar per Task AH: "më duhet" takes NOMINATIVE; ask for ONE dimension
     # and request a VALUE ("Për cilin afat po pyesni?"), not a choice among
     # dimension names. The dimension sub-question agrees in case so it reads
     # naturally: "Për cilin afat / Për cilën monedhë / Për cilën shumë / ...".
     if missing_dims:
+        # Never ask for a dimension the corpus doesn't vary on — every row is
+        # currency=ALL, so asking for it always dead-ends on the only correct
+        # answer. Skip any dimension with ≤1 distinct value in the rows for
+        # this product.
+        missing_dims = [d for d in missing_dims if _dimension_varies(d, intent)]
+    if missing_dims:
         dim = missing_dims[0]
         label = _MISSING_KEY_DIMENSION_LABELS[dim]
         if dim == "term_months":
-            ask = "Për cilin afat po pyesni?"
+            bands = sorted(
+                {
+                    slots.maturity_band
+                    for row in _rate_rows()
+                    if (slots := _row_slots(row)).product == intent.product
+                    and slots.maturity_band is not None
+                },
+                key=lambda band: band[0],
+            )
+            if bands:
+                band_text = ", ".join(f"{a}-{b} muaj" for a, b in bands)
+                ask = f"Tabela raporton për {band_text}. Për cilin po pyesni?"
         elif dim == "currency":
             ask = "Për cilën monedhë po pyesni?"
         elif dim == "amount_band":
@@ -2013,7 +2038,7 @@ def structured_availability_hits(intent: RateIntent) -> list[dict]:
             "text": text,
             "doc": family_label,
             "article": family_label,
-            "url": "",
+            "url": next((str(r.get("url") or "") for r in matching_rows if r.get("url")), ""),
             "issuer": issuer_of(hit_id, text),
             "retrieval_source": "structured_rate",
             "rate_resolution": intent._asdict(),

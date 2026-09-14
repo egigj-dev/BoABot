@@ -1296,8 +1296,8 @@ def _structured_rate_decision(
     """Injectable pre-LLM seam for exact closed-catalog rate requests."""
     if not _structured_rate_enabled() or not _structured_rate_eligible(question):
         return None
-    from .comparison import (CATALOG_DECLINE_REASONS, ResponseMode, _rate_rows, _row_slots,
-                             _source_bank_labels,
+    from .comparison import (CATALOG_DECLINE_REASONS, ResponseMode, _dimension_varies, _rate_rows, 
+                            _row_slots, _source_bank_labels,
                              merge_elliptical, parse_rate_intent_hybrid,
                              plan_structured_response, resolve_rate_rows)
 
@@ -1415,17 +1415,47 @@ def _structured_rate_decision(
                 "fee_event": "lloji i komisionit",
                 "loan_type": "lloji i kredisë (konsumatore, shtëpi/hipotekare, biznes)",
             }
-            dimensions = [
-                labels[item] for item in (
+            unresolved = [
+                item for item in (
                     parsed.coverage.unresolved_qualifiers
                     if parsed.coverage is not None else ()
                 ) if item in labels
             ]
-            if len(dimensions) > 1:
-                requested = ", ".join(dimensions[:-1]) + f" dhe {dimensions[-1]}"
+            # Never ask for a dimension the corpus does not vary on: every row
+            # is currency=ALL, so asking for it dead-ends on the only correct
+            # answer the user can give.
+            if parsed.intent is not None:
+                unresolved = [
+                    item for item in unresolved
+                    if _dimension_varies(item, parsed.intent)
+                ]
+            # Ask for ONE dimension (Task AH) and name its real values from the
+            # corpus, mirroring the maturity_band_required branch below.
+            first = unresolved[0] if unresolved else None
+            if first is None:
+                message = (
+                    "Nuk kam një dimension të mëtejshëm për ta ngushtuar këtë "
+                    "krahasim në tabelat e publikuara."
+                )
             else:
-                requested = dimensions[0] if dimensions else "dimensionet e krahasimit"
-            message = f"Për ta krahasuar saktë, më duhet {requested}."
+                message = f"Për ta krahasuar saktë, më duhet {labels[first]}."
+                if first == "term_months" and parsed.intent is not None:
+                    bands = sorted(
+                        {
+                            slots.maturity_band
+                            for row in _rate_rows()
+                            if (slots := _row_slots(row)).product
+                            == parsed.intent.product
+                            and slots.maturity_band is not None
+                        },
+                        key=lambda band: band[0],
+                    )
+                    if bands:
+                        band_text = ", ".join(f"{a}-{b} muaj" for a, b in bands)
+                        message = (
+                            f"Për ta krahasuar saktë, më duhet afati. Tabela "
+                            f"raporton për {band_text}. Për cilin po pyesni?"
+                        )
             reason = DecisionReason.COMPARISON_DIMENSIONS_MISSING
         elif parsed.reason == "maturity_band_required":
             # Business-rate family: band required (rule 2/3 — CLARIFY, never
