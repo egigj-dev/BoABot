@@ -1812,14 +1812,61 @@ _MISSING_KEY_DIMENSION_LABELS = {
     "loan_type": "lloji i kredisë (konsumatore, shtëpi/hipotekare, biznes)",
 }
 
-def _dimension_varies(dimension: str, intent: RateIntent) -> bool:
-    """True when the corpus holds more than one value for this dimension."""
-    values = {
-        getattr(_row_slots(row), dimension, None)
-        for row in _rate_rows()
-        if intent.product is None or _row_slots(row).product == intent.product
+def _rows_scoped_by_intent(
+        intent: "RateIntent",
+        ) -> tuple[dict, ...]:
+    """Rows relevant to an intent, product- or family-scoped.
+
+    An intent with a product reads that product's rows; with a family in
+    PRODUCT_FAMILY it reads the family's member-product rows; with neither (or
+    a non-PRODUCT_FAMILY family such as the business table) it reads the whole
+    corpus. This is what keeps the credit-family asks from ever seeing the
+    business rows — the only rows whose ``_row_slots().product`` is ``None``.
+    """
+    if intent.product is not None:
+        return tuple(
+            row for row in _rate_rows()
+            if _row_slots(row).product == intent.product
+        )
+    family_products = PRODUCT_FAMILY.get(intent.family or "")
+    if family_products:
+        return tuple(
+            row for row in _rate_rows()
+            if _row_slots(row).product in family_products
+        )
+    return _rate_rows()
+
+
+def _bands_for_intent(intent: "RateIntent") -> list[tuple[int, int]]:
+    """Distinct maturity bands for the rows scoped by an intent, by band start.
+
+    Never falls back to ``product == None`` matching: an unscoped intent
+    returns the empty list so callers skip the band override entirely.
+    """
+    bands = {
+        slots.maturity_band
+        for row in _rows_scoped_by_intent(intent)
+        if (slots := _row_slots(row)).maturity_band is not None
     }
-    return len({v for v in values if v is not None}) > 1
+    return sorted(bands, key=lambda band: band[0])
+
+
+def _dimension_varies(dimension: str, intent: RateIntent) -> bool:
+    """True when the corpus holds more than one value for this dimension.
+
+    Rows are scoped like the band enumeration (product, then family, then all)
+    so a credit ask never consults the business rows. Row-level dimensions
+    (currency, customer_segment) are read from the row dict; slot dimensions
+    (term_months, amount_band, …) from ``_row_slots``.
+    """
+    values = set()
+    for row in _rows_scoped_by_intent(intent):
+        slots = _row_slots(row)
+        if hasattr(slots, dimension):
+            values.add(getattr(slots, dimension))
+        else:
+            values.add(row.get(dimension))
+    return len({value for value in values if value is not None}) > 1
 
 def _missing_key_message(intent: RateIntent) -> str:
     """One-or-two-sentence clarify for a resolved-but-unresolvable intent.
@@ -1860,6 +1907,10 @@ def _missing_key_message(intent: RateIntent) -> str:
         # bands actually resolve for the asked product/family.
         if dim == "term_months":
             ask = "Për cilin afat po pyesni?"
+            bands = _bands_for_intent(intent)
+            if bands:
+                band_text = ", ".join(f"{a}-{b} muaj" for a, b in bands)
+                ask = f"Tabela raporton për {band_text}. Për cilin po pyesni?"
         elif dim == "currency":
             ask = "Për cilën monedhë po pyesni?"
         elif dim == "amount_band":

@@ -1296,10 +1296,11 @@ def _structured_rate_decision(
     """Injectable pre-LLM seam for exact closed-catalog rate requests."""
     if not _structured_rate_enabled() or not _structured_rate_eligible(question):
         return None
-    from .comparison import (CATALOG_DECLINE_REASONS, ResponseMode, _dimension_varies, _rate_rows, 
-                            _row_slots, _source_bank_labels,
-                             merge_elliptical, parse_rate_intent_hybrid,
-                             plan_structured_response, resolve_rate_rows)
+    from .comparison import (CATALOG_DECLINE_REASONS, ResponseMode, _bands_for_intent,
+                             _dimension_varies, _rate_rows, _row_slots,
+                             _source_bank_labels, merge_elliptical,
+                             parse_rate_intent_hybrid, plan_structured_response,
+                             resolve_rate_rows)
 
     parsed = parse_rate_intent_hybrid(question)
     plan = plan_structured_response(question, parsed)
@@ -1440,16 +1441,7 @@ def _structured_rate_decision(
             else:
                 message = f"Për ta krahasuar saktë, më duhet {labels[first]}."
                 if first == "term_months" and parsed.intent is not None:
-                    bands = sorted(
-                        {
-                            slots.maturity_band
-                            for row in _rate_rows()
-                            if (slots := _row_slots(row)).product
-                            == parsed.intent.product
-                            and slots.maturity_band is not None
-                        },
-                        key=lambda band: band[0],
-                    )
+                    bands = _bands_for_intent(parsed.intent)
                     if bands:
                         band_text = ", ".join(f"{a}-{b} muaj" for a, b in bands)
                         message = (

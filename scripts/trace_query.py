@@ -160,7 +160,14 @@ def _intent_slim(intent) -> dict:
         values = intent._asdict()
     except Exception:
         return {}
-    return {k: v for k, v in values.items() if v not in (None, (), frozenset(), False)}
+    slim: dict = {}
+    for key, value in values.items():
+        if value in (None, (), frozenset(), False):
+            continue
+        if isinstance(value, frozenset):
+            value = sorted(value)
+        slim[key] = value
+    return slim
 
 
 def _frame_effect(reason: str) -> str:
